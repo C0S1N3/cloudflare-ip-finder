@@ -11,6 +11,7 @@
 这款小巧而强大的工具为你带来了以下功能：
 
 - ✅ **简单易用**: 直观的图形界面，操作简单，无需复杂的命令行知识。
+- 🎯 **bgacn.com 专用优选**: 以目标站 SNI 实测 TLS 握手、按稳定性排序，一键把最优 IP 写入 hosts（详见下文）。
 - ⚡ **多协议延迟测试**: 同时测试 TCP、HTTP 和 HTTPS 延迟，全方位评估 IP 质量。
 - 📊 **智能评分系统**: 综合评估 IP 延迟，提供直观的评分，帮你快速找到最佳 IP。
 - 📝 **多种导出格式**: 支持导出 Hosts 文件、JSON 和 CSV 格式，方便你灵活使用优选结果。
@@ -40,6 +41,50 @@
    - 右键点击结果表格，弹出菜单，选择 "导出到Hosts"、"导出为JSON" 或 "导出为CSV"，将测试结果保存到文件。
 7. **网络诊断**: 在 "工具" 菜单中打开 "网络诊断" 窗口，可以使用路由追踪和 DNS 解析功能，输入目标地址进行网络诊断。
 8. **查看历史**: 在 "工具" 菜单中打开 "历史记录" 窗口，查看之前的测试记录。
+
+## 🎯 bgacn.com 专用优选（本 fork 新增）
+
+bgacn.com 托管在 Cloudflare，默认 DNS 给出的 CF IP 在国内经常 TLS 握手被掐（握手 10 秒+ 或直接超时）。
+通用模式拿 speed.cloudflare.com 等无关域名测延迟，对这种情况参考价值有限；本功能专为 bgacn.com 这类场景设计：
+
+- **以目标站 SNI 实测握手**: 直接对候选 IP 做 `SNI=bgacn.com` 的 TLS 握手，被限速掐的正是这一步，测得才准。
+- **校验真实性**: 证书必须覆盖目标域，且 `HEAD /` 返回 HTTP 200，确认该 IP 真的在服务 bgacn.com。
+- **按稳定性排序**: 每个 IP 多次握手，按命中率降序排序（单次最快往往最抖），再看平均/最差握手耗时。
+- **安全写 hosts**: 写入时自动清理目标域的旧映射，条目带 `cf-ip-finder:bgacn` 标记，可随时一键移除，不碰你自己写的 hosts。
+
+**图形界面**：点击主界面的 "bgacn.com 优选" 按钮，设置目标域名（默认 bgacn.com）、测试数量、握手次数后点 "开始优选"，
+完成后选中结果（不选则用最稳的）点 "写入Hosts"（需管理员权限），"从Hosts移除" 可随时还原。
+
+**命令行**（适合脚本化 / 定时重跑）：
+
+```bash
+# 扫描并打印最稳 IP
+python cf_ip_scanner.py bgacn
+
+# 扫描并写入 hosts（需管理员权限）
+python cf_ip_scanner.py bgacn --apply
+
+# 换 IP：重新跑一次即可（自动清理旧映射）
+python cf_ip_scanner.py bgacn --apply
+
+# 撤销：移除本工具写入的条目
+python cf_ip_scanner.py bgacn --remove
+
+# 自定义参数
+python cf_ip_scanner.py bgacn --target www.bgacn.com --count 1500 --reps 5 --json result.json
+```
+
+| 参数 | 默认 | 说明 |
+|---|---|---|
+| `--target` | `bgacn.com` | 目标域名 |
+| `--count` | `800` | 采样 IP 数量 |
+| `--reps` | `3` | 每个 IP 握手次数 |
+| `--timeout` | `3.0` | 单次握手超时（秒） |
+| `--top` | `10` | 展示前 N 个结果 |
+| `--workers` | `120` | 并发线程数 |
+| `--apply` | — | 把最稳的 IP 写入 hosts |
+| `--remove` | — | 从 hosts 移除本工具写入的条目 |
+| `--json` | — | 结果存成 JSON 文件 |
 
 ## 🤝 贡献与反馈
 

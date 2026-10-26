@@ -1,13 +1,17 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
+import argparse
+import fnmatch
 import socket
+import ssl
+import sys
 import time
 import json
 import csv
 import ipaddress
 import threading
 import requests
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 import subprocess
 import platform
@@ -399,6 +403,194 @@ class Exporter:
             print(f"Export CSV failed: {e}")
             return False
 
+class BGACNTargetScanner:
+    """bgacn.com 专用优选引擎
+
+    与通用模式的区别：
+      * 直接以目标站 SNI 做 TLS 握手测速（国内被限速掐的正是带 SNI 的握手这一步），
+        而不是拿 speed.cloudflare.com 等无关域名估延迟；
+      * 校验证书覆盖目标域 + HTTP 200，确认该 IP 真的在服务目标站；
+      * 每个 IP 多次采样，按稳定性（命中率）排序，单次最快往往最抖。
+    """
+
+    HOSTS_TAG = "cf-ip-finder:bgacn"
+
+    # Cloudflare 官方 IPv4 段（内嵌，扫描不依赖在线拉取）
+    CF_RANGES = [
+        '173.245.48.0/20', '103.21.244.0/22', '103.22.200.0/22', '103.31.4.0/22',
+        '141.101.64.0/18', '108.162.192.0/18', '190.93.240.0/20', '188.114.96.0/20',
+        '197.234.240.0/22', '198.41.128.0/17', '162.158.0.0/15', '104.16.0.0/13',
+        '104.24.0.0/14', '172.64.0.0/13', '131.0.72.0/22',
+    ]
+
+    def __init__(self, target='bgacn.com', reps=3, timeout=3.0):
+        self.target = target
+        self.reps = reps
+        self.timeout = timeout
+
+    def host_names(self):
+        """目标域 + 对应 www 变体"""
+        if self.target.startswith('www.'):
+            return [self.target, self.target[4:]]
+        return [self.target, 'www.' + self.target]
+
+    def sample_ips(self, count):
+        """从 CF 网段均匀采样 count 个 IP"""
+        per = max(1, count // len(self.CF_RANGES))
+        out, seen = [], set()
+        for cidr in self.CF_RANGES:
+            net = ipaddress.ip_network(cidr)
+            base = int(net.network_address)
+            span = net.num_addresses - 2  # 排除网络地址/广播地址
+            for offset in random.sample(range(1, span + 1), min(per, span)):
+                s = str(ipaddress.IPv4Address(base + offset))
+                if s not in seen:
+                    seen.add(s)
+                    out.append(s)
+        random.shuffle(out)
+        return out[:count]
+
+    @staticmethod
+    def _cert_matches(host, names):
+        """简易通配符匹配：*.bgacn.com 或 bgacn.com"""
+        for n in names:
+            if n == host or fnmatch.fnmatch(host, n):
+                return True
+        return False
+
+    def _probe_once(self, ip):
+        """单次 TLS 握手测速，返回握手耗时（秒）；证书不符/被掐/非 200 返回 None"""
+        try:
+            t0 = time.perf_counter()
+            raw = socket.create_connection((ip, 443), timeout=self.timeout)
+            raw.settimeout(self.timeout)
+            ctx = ssl.create_default_context()
+            try:
+                ss = ctx.wrap_socket(raw, server_hostname=self.target)
+            except ssl.SSLError:
+                raw.close()
+                return None
+            tls = time.perf_counter() - t0
+            # 确认证书确实覆盖目标域（防止连到别的 CF 客户）
+            cert = ss.getpeercert()
+            names = [v for t, v in cert.get('subjectAltName', ()) if t == 'DNS']
+            if not self._cert_matches(self.target, names):
+                ss.close()
+                return None
+            # 确认真的返回 200
+            ss.sendall(
+                f"HEAD / HTTP/1.1\r\nHost: {self.target}\r\nConnection: close\r\n"
+                f"User-Agent: cf-ip-scanner\r\n\r\n".encode()
+            )
+            head = ss.recv(200)
+            ss.close()
+            if b"HTTP/" in head:
+                try:
+                    code = int(head.split()[1])
+                except Exception:
+                    return None
+                return tls if code == 200 else None
+            return None
+        except Exception:
+            return None
+
+    def probe_ip(self, ip):
+        """对单个 IP 做 reps 次握手，返回稳定性统计"""
+        times = []
+        for _ in range(self.reps):
+            t = self._probe_once(ip)
+            if t is not None:
+                times.append(t)
+            time.sleep(0.05)
+        if not times:
+            return {'ip': ip, 'ok': False, 'hits': 0, 'reps': self.reps}
+        return {
+            'ip': ip, 'ok': True, 'hits': len(times), 'reps': self.reps,
+            'rate': len(times) / self.reps,
+            'avg': sum(times) / len(times),
+            'worst': max(times), 'best': min(times),
+        }
+
+    def scan(self, count, workers=120, log=print, cancel=None):
+        """扫描并按稳定性排序返回可用 IP（命中率降序 → 平均握手升序 → 最差握手升序）"""
+        ips = self.sample_ips(count)
+        log(f"目标 {self.target} | 扫描 {len(ips)} 个 Cloudflare IP | 每个 {self.reps} 次握手 ...")
+        results, done = [], 0
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            futures = [ex.submit(self.probe_ip, ip) for ip in ips]
+            for fut in as_completed(futures):
+                if cancel and cancel():
+                    for pending in futures:
+                        pending.cancel()
+                    break
+                results.append(fut.result())
+                done += 1
+                if done % 100 == 0:
+                    okc = sum(1 for r in results if r['ok'])
+                    log(f"进度 {done}/{len(ips)}  可用 {okc}")
+        good = [r for r in results if r['ok']]
+        good.sort(key=lambda r: (-r['rate'], r['avg'], r['worst']))
+        return good
+
+    # ---------------- hosts 写入 ----------------
+    @staticmethod
+    def _hosts_path():
+        if platform.system() == 'Windows':
+            return r"C:\Windows\System32\drivers\etc\hosts"
+        return "/etc/hosts"
+
+    def apply_hosts(self, ip):
+        """把最优 IP 写入 hosts（目标域的旧映射一并清理），需管理员权限"""
+        names = self.host_names()
+        keys = set(names)
+        path = self._hosts_path()
+        try:
+            with open(path, 'r', encoding='utf-8', errors='replace') as f:
+                data = f.read()
+            out = []
+            for line in data.splitlines():
+                s = line.strip()
+                if not s or s.startswith('#'):
+                    if self.HOSTS_TAG in line:
+                        continue
+                    out.append(line)
+                    continue
+                fields = s.split()
+                # 带本工具标记的行、以及映射到目标域的旧映射都清掉，避免重复映射
+                if self.HOSTS_TAG in line or (len(fields) >= 2 and keys.intersection(fields[1:])):
+                    continue
+                out.append(line)
+            block = [f"# {self.HOSTS_TAG} begin {self.target} -> {ip}"]
+            for n in names:
+                block.append(f"{ip}    {n}    # {self.HOSTS_TAG}")
+            block.append(f"# {self.HOSTS_TAG} end")
+            with open(path, 'w', encoding='utf-8', errors='replace') as f:
+                f.write("\n".join(out).rstrip() + "\n\n" + "\n".join(block) + "\n")
+        except PermissionError:
+            return False, "无权限读写 hosts，请以管理员身份运行。"
+        except OSError as e:
+            return False, f"hosts 操作失败: {e}"
+        return True, "已写入 hosts（旧映射已清除）:\n" + "\n".join(block)
+
+    def remove_hosts(self):
+        """只清理本工具写入的条目（按注释标记识别），不碰用户自己的 hosts 内容"""
+        path = self._hosts_path()
+        try:
+            with open(path, 'r', encoding='utf-8', errors='replace') as f:
+                data = f.read()
+            lines = data.splitlines()
+            out = [line for line in lines if self.HOSTS_TAG not in line]
+            if len(out) == len(lines):
+                return False, "hosts 里没有本工具写入的条目。"
+            with open(path, 'w', encoding='utf-8', errors='replace') as f:
+                f.write("\n".join(out).rstrip() + "\n")
+        except PermissionError:
+            return False, "无权限写 hosts，请以管理员身份运行。"
+        except OSError as e:
+            return False, f"hosts 操作失败: {e}"
+        return True, "已从 hosts 移除本工具写入的条目。"
+
+
 class HistoryWindow(tk.Toplevel):
     """历史记录窗口"""
     def __init__(self, parent):
@@ -546,6 +738,127 @@ class ConfigWindow(tk.Toplevel):
         self.destroy()
         messagebox.showinfo("配置已保存", "配置已成功保存。")
 
+class BGACNWindow(tk.Toplevel):
+    """bgacn.com 专用优选窗口"""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.title("bgacn.com 专用优选")
+        self.geometry("660x520")
+        self.running = False
+        self.results = []
+
+        row1 = ttk.Frame(self)
+        row1.pack(pady=8, fill=tk.X, padx=10)
+        ttk.Label(row1, text="目标域名:").grid(row=0, column=0, padx=5)
+        self.target_entry = ttk.Entry(row1, width=16)
+        self.target_entry.insert(0, "bgacn.com")
+        self.target_entry.grid(row=0, column=1, padx=5)
+
+        ttk.Label(row1, text="测试数量:").grid(row=0, column=2, padx=5)
+        self.count_spin = ttk.Spinbox(row1, from_=50, to=5000, width=6)
+        self.count_spin.set(400)
+        self.count_spin.grid(row=0, column=3, padx=5)
+
+        ttk.Label(row1, text="握手次数:").grid(row=0, column=4, padx=5)
+        self.reps_spin = ttk.Spinbox(row1, from_=1, to=10, width=3)
+        self.reps_spin.set(3)
+        self.reps_spin.grid(row=0, column=5, padx=5)
+
+        ttk.Label(row1, text="超时(秒):").grid(row=0, column=6, padx=5)
+        self.timeout_spin = ttk.Spinbox(row1, from_=1, to=10, width=3)
+        self.timeout_spin.set(3)
+        self.timeout_spin.grid(row=0, column=7, padx=5)
+
+        row2 = ttk.Frame(self)
+        row2.pack(pady=4, fill=tk.X, padx=10)
+        self.start_btn = ttk.Button(row2, text="开始优选", command=self.start_scan)
+        self.start_btn.pack(side=tk.LEFT, padx=5)
+        self.stop_btn = ttk.Button(row2, text="停止", command=self.stop_scan, state=tk.DISABLED)
+        self.stop_btn.pack(side=tk.LEFT, padx=5)
+        self.apply_btn = ttk.Button(row2, text="写入Hosts", command=self.apply_hosts)
+        self.apply_btn.pack(side=tk.LEFT, padx=5)
+        self.remove_btn = ttk.Button(row2, text="从Hosts移除", command=self.remove_hosts)
+        self.remove_btn.pack(side=tk.LEFT, padx=5)
+
+        columns = ('ip', 'hits', 'avg', 'worst')
+        self.tree = ttk.Treeview(self, columns=columns, show='headings', selectmode='browse')
+        self.tree.heading('ip', text='IP地址')
+        self.tree.heading('hits', text='命中')
+        self.tree.heading('avg', text='平均握手(ms)')
+        self.tree.heading('worst', text='最差握手(ms)')
+        self.tree.column('hits', anchor='center', width=70)
+        self.tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=6)
+
+        self.status = ttk.Label(self, text="以目标站 SNI 测 TLS 握手，按稳定性排序（命中率优先）", relief=tk.SUNKEN, anchor='w')
+        self.status.pack(fill=tk.X, side=tk.BOTTOM)
+
+    def start_scan(self):
+        if self.running:
+            return
+        self.running = True
+        self.start_btn.config(state=tk.DISABLED)
+        self.stop_btn.config(state=tk.NORMAL)
+        self.tree.delete(*self.tree.get_children())
+        self.results = []
+        threading.Thread(target=self._run_scan, daemon=True).start()
+
+    def stop_scan(self):
+        self.running = False
+        self.status.config(text="停止中...")
+
+    def _run_scan(self):
+        target = self.target_entry.get().strip() or 'bgacn.com'
+        scanner = BGACNTargetScanner(target, int(self.reps_spin.get()), float(self.timeout_spin.get()))
+        count = int(self.count_spin.get())
+        self._log(f"目标 {target} | 扫描 {count} 个 Cloudflare IP ...")
+        try:
+            good = scanner.scan(count, workers=120, log=self._log, cancel=lambda: not self.running)
+        except Exception as e:
+            self.after(0, lambda: self._finish_scan([], f"扫描出错: {e}"))
+            return
+        self.after(0, self._finish_scan, good, None)
+
+    def _log(self, msg):
+        self.after(0, lambda: self.status.config(text=msg))
+
+    def _finish_scan(self, good, error):
+        self.running = False
+        self.start_btn.config(state=tk.NORMAL)
+        self.stop_btn.config(state=tk.DISABLED)
+        self.results = good
+        for r in good:
+            self.tree.insert('', 'end', values=(
+                r['ip'],
+                f"{r['hits']}/{r['reps']}",
+                f"{r['avg'] * 1000:.0f}",
+                f"{r['worst'] * 1000:.0f}",
+            ))
+        if error:
+            self.status.config(text=error)
+        elif good:
+            self.status.config(text=f"完成 | 可用 {len(good)} 个 IP，最稳: {good[0]['ip']}（命中 {good[0]['hits']}/{good[0]['reps']}）")
+        else:
+            self.status.config(text="没有找到可用 IP，可增大测试数量或超时重试。")
+
+    def _scanner(self):
+        target = self.target_entry.get().strip() or 'bgacn.com'
+        return BGACNTargetScanner(target)
+
+    def apply_hosts(self):
+        if not self.results:
+            messagebox.showinfo("写入Hosts", "请先运行优选。")
+            return
+        sel = self.tree.selection()
+        ip = self.tree.item(sel[0], 'values')[0] if sel else self.results[0]['ip']
+        ok, msg = self._scanner().apply_hosts(ip)
+        (messagebox.showinfo if ok else messagebox.showerror)("写入Hosts", msg)
+
+    def remove_hosts(self):
+        ok, msg = self._scanner().remove_hosts()
+        messagebox.showinfo("从Hosts移除", msg)
+
+
 class Application(tk.Tk):
     """主应用程序类"""
     def __init__(self):
@@ -555,7 +868,7 @@ class Application(tk.Tk):
         self.app_config = self.scanner.config
         self.running = False
         self.results = []
-        self.version = "1.0.2"
+        self.version = "1.2.0"
         self.init_ui()
         self.load_history()
 
@@ -589,6 +902,9 @@ class Application(tk.Tk):
 
         self.apply_hosts_btn = ttk.Button(control_frame, text="应用到Hosts", command=self.apply_hosts)
         self.apply_hosts_btn.grid(row=0, column=6, padx=10, pady=5)
+
+        self.bgacn_btn = ttk.Button(control_frame, text="bgacn.com 优选", command=self.open_bgacn)
+        self.bgacn_btn.grid(row=0, column=7, padx=10, pady=5)
 
         columns = ('ip', 'tcp', 'http', 'https', 'score')
         self.tree = ttk.Treeview(self, columns=columns, show='headings', selectmode='extended')
@@ -665,6 +981,10 @@ class Application(tk.Tk):
     def open_history(self):
         """打开历史记录窗口"""
         HistoryWindow(self)
+
+    def open_bgacn(self):
+        """打开 bgacn.com 专用优选窗口"""
+        BGACNWindow(self)
 
     def start_scan(self):
         """开始扫描"""
@@ -839,6 +1159,66 @@ class Application(tk.Tk):
              else:
                  messagebox.showinfo("导出", "没有有效的扫描结果可以导出。")
 
+def run_bgacn_cli(argv):
+    """bgacn.com 专用优选命令行模式: python cf_ip_scanner.py bgacn [--apply|--remove]"""
+    ap = argparse.ArgumentParser(
+        prog="cf_ip_scanner.py bgacn",
+        description="bgacn.com 专用 Cloudflare 优选 IP（SNI 握手测速 + 稳定性排序）",
+    )
+    ap.add_argument("--target", default="bgacn.com", help="目标域名（默认 bgacn.com）")
+    ap.add_argument("--count", type=int, default=800, help="采样 IP 数量（默认 800）")
+    ap.add_argument("--reps", type=int, default=3, help="每个 IP 握手次数（默认 3）")
+    ap.add_argument("--timeout", type=float, default=3.0, help="单次握手超时秒（默认 3）")
+    ap.add_argument("--top", type=int, default=10, help="展示前 N 个结果（默认 10）")
+    ap.add_argument("--workers", type=int, default=120, help="并发线程数（默认 120）")
+    ap.add_argument("--apply", action="store_true", help="把最稳的 IP 写入 hosts（需管理员）")
+    ap.add_argument("--remove", action="store_true", help="从 hosts 移除本工具写入的条目")
+    ap.add_argument("--json", help="把结果存成 JSON 文件")
+    args = ap.parse_args(argv)
+
+    scanner = BGACNTargetScanner(args.target, args.reps, args.timeout)
+
+    if args.remove:
+        ok, msg = scanner.remove_hosts()
+        print(("[+] " if ok else "[*] ") + msg)
+        return 0
+
+    t0 = time.time()
+    good = scanner.scan(args.count, workers=args.workers)
+    dt = time.time() - t0
+
+    if not good:
+        print("[-] 没有找到可用 IP，可增大 --count 或 --timeout 重试。")
+        return 1
+
+    print(f"\n[+] 扫描完成 {dt:.0f}s | 可用 {len(good)} 个 IP（稳定性优先排序）\n")
+    print(f"{'IP':<16} {'命中':>8} {'平均握手':>10} {'最差握手':>10}")
+    for r in good[: args.top]:
+        print(f"{r['ip']:<16} {r['hits']}/{r['reps']:<6} {r['avg'] * 1000:>7.0f}ms {r['worst'] * 1000:>7.0f}ms")
+
+    best = good[0]
+    print(f"\n[★] 最稳 IP: {best['ip']}（命中 {best['hits']}/{best['reps']}，平均握手 {best['avg'] * 1000:.0f}ms）")
+
+    if args.json:
+        with open(args.json, "w", encoding="utf-8") as f:
+            json.dump({
+                'generated': time.time(),
+                'target': args.target,
+                'results': good[:50],
+            }, f, indent=2, ensure_ascii=False)
+        print(f"[+] 结果已存 -> {args.json}")
+
+    if args.apply:
+        ok, msg = scanner.apply_hosts(best["ip"])
+        print(("[+] " if ok else "[-] ") + msg)
+        return 0 if ok else 1
+
+    print("\n[*] 加 --apply 写入 hosts 生效（管理员运行）。")
+    return 0
+
+
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "bgacn":
+        sys.exit(run_bgacn_cli(sys.argv[2:]))
     app = Application()
     app.mainloop()
