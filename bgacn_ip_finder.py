@@ -1,21 +1,25 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-bgacn-ip-finder — Cloudflare 优选 IP 专用工具（bgacn.com 定制版）
+cf-ip-finder — 托管在 Cloudflare 上网站的优选 IP 工具
 
-Fork 自 obsidianplusplus/cloudflare-ip-finder，针对 bgacn.com 重写：
+为指定的 Cloudflare 托管网站优选可直连的 CF IP（默认 bgacn.com）：
   * 只用 Python 标准库（无需 pip install）
   * 直接以 SNI=<target> 做 TLS 握手测速（命中被 GFW 掐的正是这一步）
   * 校验证书 + HTTP 200，确认该 IP 真的在服务目标站
   * 多次采样按「稳定性」排序，而不是单次最快（单次最快往往最抖）
   * --apply 一键写入 Windows hosts，--remove 撤销
+  * --yaml / --merge 导出 Clash 配置 / Clash Verge 覆写片段（手机、路由器等
+    不方便改 hosts 的场景，把优选 IP 交给 Clash 生效）
 
 用法:
   python bgacn_ip_finder.py                 # 扫描并打印最稳的 IP
   python bgacn_ip_finder.py --gui           # 启动图形界面
   python bgacn_ip_finder.py --apply         # 扫描并把最优 IP 写入 hosts（需管理员）
   python bgacn_ip_finder.py --remove        # 从 hosts 删除本工具写入的条目
-  python bgacn_ip_finder.py --target www.bgacn.com --count 1500 --reps 5
+  python bgacn_ip_finder.py --yaml c.yaml --merge m.yaml   # 扫描并导出 Clash 配置
+  python bgacn_ip_finder.py --ip 1.2.3.4 --yaml c.yaml     # 指定 IP 直接生成，不扫描
+  python bgacn_ip_finder.py --target example.com --count 1500 --reps 5
 """
 
 import argparse
@@ -28,7 +32,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# ---- 定制点：默认目标就是 bgacn.com ----
+# ---- 默认目标（可用 --target 换成任何托管在 Cloudflare 的网站）----
 DEFAULT_TARGET = "bgacn.com"
 HOSTS_TAG = "bgacn-ip-finder"  # hosts 条目注释标记，--remove 靠它识别
 
@@ -227,10 +231,70 @@ def remove_hosts():
     return True, "已从 hosts 移除本工具写入的条目。"
 
 
+# ---------------- Clash 配置导出 ----------------
+def _clash_yaml_text(ip, target):
+    """纯直连 Clash 配置：无需任何节点订阅，导入即加速 target。"""
+    return f"""# {target} 优选 IP 最小配置（纯直连，无需任何节点订阅）
+# 导入 Clash / ClashMeta / Clash Verge 后开 TUN/系统代理即生效
+mixed-port: 7890
+allow-lan: false
+mode: Rule
+log-level: info
+unified-delay: true
+
+dns:
+  enable: true
+  nameserver:
+    - 223.5.5.5
+    - 119.29.29.29
+
+hosts:
+  {target}: {ip}
+  "+.{target}": {ip}
+
+rules:
+  - DOMAIN-SUFFIX,{target},DIRECT
+  - MATCH,DIRECT
+"""
+
+
+def _clash_merge_text(ip, target):
+    """Clash Verge「覆写合并」片段：挂到已有订阅/配置上，更新不丢。"""
+    return f"""# Clash Verge 覆写合并片段：{target} -> {ip}
+dns:
+  enable: true
+hosts:
+  {target}: {ip}
+  "+.{target}": {ip}
+rules:
+  - DOMAIN-SUFFIX,{target},DIRECT
+"""
+
+
+def export_yaml(path, ip, target):
+    """生成 Clash 独立配置（纯直连 + 优选 IP 映射），返回 (ok, msg)。"""
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(_clash_yaml_text(ip, target))
+    except OSError as e:
+        return False, f"写入失败: {e}"
+    return True, f"已生成 Clash 独立配置 -> {path}\n      {target} -> {ip}（纯直连，无需订阅）"
+
+
+def export_merge(path, ip, target):
+    """生成 Clash Verge 覆写合并片段，返回 (ok, msg)。"""
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(_clash_merge_text(ip, target))
+    except OSError as e:
+        return False, f"写入失败: {e}"
+    return True, f"已生成覆写合并片段 -> {path}\n      {target} -> {ip}（挂到订阅上即可）"
+
+
 # ---------------- 主入口 ----------------
 def main():
     ap = argparse.ArgumentParser(
-        description="bgacn.com Cloudflare 优选 IP 工具（fork 自 cloudflare-ip-finder）",
+        description="托管在 Cloudflare 上网站的优选 IP 工具（默认 bgacn.com，--target 可改）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ap.add_argument("--target", default=DEFAULT_TARGET, help=f"目标域名（默认 {DEFAULT_TARGET}）")
@@ -238,8 +302,11 @@ def main():
     ap.add_argument("--reps", type=int, default=3, help="每个 IP 握手次数（默认 3）")
     ap.add_argument("--timeout", type=float, default=3.0, help="单次握手超时秒（默认 3）")
     ap.add_argument("--top", type=int, default=10, help="展示前 N 个（默认 10）")
+    ap.add_argument("--ip", help="直接指定优选 IP、跳过扫描（配合 --apply/--yaml/--merge）")
     ap.add_argument("--apply", action="store_true", help="把最稳的 IP 写入 Windows hosts（需管理员）")
     ap.add_argument("--remove", action="store_true", help="从 hosts 移除本工具写入的条目")
+    ap.add_argument("--yaml", metavar="FILE", help="生成 Clash 独立配置（纯直连，无需订阅）到 FILE")
+    ap.add_argument("--merge", metavar="FILE", help="生成 Clash Verge 覆写合并片段到 FILE")
     ap.add_argument("--gui", action="store_true", help="启动图形界面")
     ap.add_argument("--json", help="把结果存成 JSON 文件")
     args = ap.parse_args()
@@ -254,34 +321,46 @@ def main():
         print(("[+] " if ok else "[*] ") + msg)
         return
 
-    t0 = time.time()
-    good = scan(args.target, args.count, args.reps, args.timeout)
-    dt = time.time() - t0
+    if args.ip:
+        best = {"ip": args.ip}
+    else:
+        t0 = time.time()
+        good = scan(args.target, args.count, args.reps, args.timeout)
+        dt = time.time() - t0
 
-    if not good:
-        print("[-] 没有找到可用 IP。可增大 --count 或 --timeout 重试。")
-        sys.exit(1)
+        if not good:
+            print("[-] 没有找到可用 IP。可增大 --count 或 --timeout 重试。")
+            sys.exit(1)
 
-    print(f"\n[+] 扫描完成 {dt:.0f}s | 可用 {len(good)} 个 IP（稳定性优先排序）\n")
-    print(f"{'IP':<16} {'命中':>7} {'平均':>8} {'最差':>8}")
-    for r in good[: args.top]:
-        print(f"{r['ip']:<16} {r['hits']}/{r['reps']:<5} {r['avg']*1000:>6.0f}ms {r['worst']*1000:>6.0f}ms")
+        print(f"\n[+] 扫描完成 {dt:.0f}s | 可用 {len(good)} 个 IP（稳定性优先排序）\n")
+        print(f"{'IP':<16} {'命中':>7} {'平均':>8} {'最差':>8}")
+        for r in good[: args.top]:
+            print(f"{r['ip']:<16} {r['hits']}/{r['reps']:<5} {r['avg']*1000:>6.0f}ms {r['worst']*1000:>6.0f}ms")
 
-    best = good[0]
-    print(f"\n[★] 最稳 IP: {best['ip']}  (命中 {best['hits']}/{best['reps']}，平均 {best['avg']*1000:.0f}ms)")
+        best = good[0]
+        print(f"\n[★] 最稳 IP: {best['ip']}  (命中 {best['hits']}/{best['reps']}，平均 {best['avg']*1000:.0f}ms)")
 
-    if args.json:
-        with open(args.json, "w", encoding="utf-8") as f:
-            json.dump(good[:50], f, indent=2, ensure_ascii=False)
-        print(f"[+] 结果已存 -> {args.json}")
+        if args.json:
+            with open(args.json, "w", encoding="utf-8") as f:
+                json.dump(good[:50], f, indent=2, ensure_ascii=False)
+            print(f"[+] 结果已存 -> {args.json}")
+
+    if args.yaml:
+        ok, msg = export_yaml(args.yaml, best["ip"], args.target)
+        print(("[+] " if ok else "[!] ") + msg)
+
+    if args.merge:
+        ok, msg = export_merge(args.merge, best["ip"], args.target)
+        print(("[+] " if ok else "[!] ") + msg)
 
     if args.apply:
         ok, msg = apply_hosts(best["ip"], args.target)
         print(("[+] " if ok else "[!] ") + msg)
         if ok:
             print("\n[*] 完成。浏览器直接访问即可，无需代理。若日后又卡，重新跑一次 --apply。")
-    else:
-        print("\n[*] 加 --apply 写入 hosts 生效（管理员运行）。")
+    elif not (args.yaml or args.merge):
+        print("\n[*] 加 --apply 写入 hosts 生效（管理员运行）；"
+              "或 --yaml / --merge 导出 Clash 配置给手机等设备用。")
 
 
 if __name__ == "__main__":

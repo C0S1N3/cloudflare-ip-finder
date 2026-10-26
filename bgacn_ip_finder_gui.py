@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-bgacn-ip-finder GUI — bgacn.com 专用 Cloudflare 优选 IP 图形界面
+cf-ip-finder GUI — 托管在 Cloudflare 上网站的优选 IP 图形界面
 
-与命令行版共用同一套扫描/hosts 逻辑（bgacn_ip_finder.py），纯标准库（tkinter）。
+为指定的 Cloudflare 托管网站优选可直连的 CF IP（默认 bgacn.com，
+「目标域名」输入框可改成任意托管在 Cloudflare 的网站）。
+与命令行版共用同一套扫描/hosts/导出逻辑（bgacn_ip_finder.py），纯标准库（tkinter）。
 
 用法:
   python bgacn_ip_finder_gui.py
@@ -12,17 +14,17 @@ bgacn-ip-finder GUI — bgacn.com 专用 Cloudflare 优选 IP 图形界面
 
 import threading
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 
 import bgacn_ip_finder as core
 
 
 class BGACNApp(tk.Tk):
-    """bgacn.com 专用优选主窗口"""
+    """优选 IP 主窗口"""
 
     def __init__(self):
         super().__init__()
-        self.title("bgacn-ip-finder — bgacn.com 专用优选")
+        self.title("Cloudflare 网站优选 IP 工具（默认 bgacn.com）")
         self.geometry("680x520")
         self.running = False
         self.results = []
@@ -34,7 +36,7 @@ class BGACNApp(tk.Tk):
 
         ttk.Label(row1, text="目标域名:").grid(row=0, column=0, padx=5)
         self.target_entry = ttk.Entry(row1, width=16)
-        self.target_entry.insert(0, core.DEFAULT_TARGET)
+        self.target_entry.insert(0, core.DEFAULT_TARGET)  # 默认 bgacn.com，可改成任意 CF 网站
         self.target_entry.grid(row=0, column=1, padx=5)
 
         ttk.Label(row1, text="测试数量:").grid(row=0, column=2, padx=5)
@@ -63,6 +65,10 @@ class BGACNApp(tk.Tk):
         self.apply_btn.pack(side=tk.LEFT, padx=5)
         self.remove_btn = ttk.Button(row2, text="从Hosts移除", command=self.remove_hosts)
         self.remove_btn.pack(side=tk.LEFT, padx=5)
+        self.yaml_btn = ttk.Button(row2, text="生成YAML", command=self.export_yaml)
+        self.yaml_btn.pack(side=tk.LEFT, padx=5)
+        self.merge_btn = ttk.Button(row2, text="生成Merge", command=self.export_merge)
+        self.merge_btn.pack(side=tk.LEFT, padx=5)
 
         columns = ('ip', 'hits', 'avg', 'worst')
         self.tree = ttk.Treeview(self, columns=columns, show='headings', selectmode='browse')
@@ -75,7 +81,7 @@ class BGACNApp(tk.Tk):
 
         self.status = ttk.Label(
             self,
-            text="以目标站 SNI 测 TLS 握手，按稳定性排序 | 写入 hosts 需管理员权限",
+            text="目标域名可改成任何托管在 Cloudflare 的网站 | 以目标站 SNI 测 TLS 握手，按稳定性排序 | 写入 hosts 需管理员权限",
             relief=tk.SUNKEN, anchor='w',
         )
         self.status.pack(fill=tk.X, side=tk.BOTTOM)
@@ -150,6 +156,39 @@ class BGACNApp(tk.Tk):
     def remove_hosts(self):
         ok, msg = core.remove_hosts()
         messagebox.showinfo("从Hosts移除", msg)
+
+    # ---------------- Clash 导出 ----------------
+    def _pick_ip(self):
+        """选中行的 IP，没选就用最稳的。"""
+        sel = self.tree.selection()
+        return self.tree.item(sel[0], 'values')[0] if sel else self.results[0]['ip']
+
+    def _export(self, kind):
+        if not self.results:
+            messagebox.showinfo("导出", "请先运行优选。")
+            return
+        ip = self._pick_ip()
+        target = self._target()
+        is_yaml = kind == "yaml"
+        path = filedialog.asksaveasfilename(
+            title="生成 Clash 独立配置" if is_yaml else "生成 Clash Verge 覆写合并片段",
+            defaultextension=".yaml",
+            initialfile=f"{target}-clash.yaml" if is_yaml else f"{target}-merge.yaml",
+            filetypes=[("YAML", "*.yaml *.yml"), ("所有文件", "*.*")],
+        )
+        if not path:
+            return
+        ok, msg = (core.export_yaml if is_yaml else core.export_merge)(path, ip, target)
+        (messagebox.showinfo if ok else messagebox.showerror)("导出", msg)
+        self.status.config(text=msg.splitlines()[0])
+
+    def export_yaml(self):
+        """生成 Clash 独立配置（纯直连，无需订阅）。"""
+        self._export("yaml")
+
+    def export_merge(self):
+        """生成 Clash Verge 覆写合并片段（挂到订阅上用）。"""
+        self._export("merge")
 
 
 def run_gui():

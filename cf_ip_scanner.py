@@ -404,7 +404,7 @@ class Exporter:
             return False
 
 class BGACNTargetScanner:
-    """bgacn.com 专用优选引擎
+    """Cloudflare 站点优选引擎（target 可换任意托管在 Cloudflare 的网站，默认 bgacn.com）
 
     与通用模式的区别：
       * 直接以目标站 SNI 做 TLS 握手测速（国内被限速掐的正是带 SNI 的握手这一步），
@@ -452,7 +452,7 @@ class BGACNTargetScanner:
 
     @staticmethod
     def _cert_matches(host, names):
-        """简易通配符匹配：*.bgacn.com 或 bgacn.com"""
+        """简易通配符匹配：*.example.com 或 example.com"""
         for n in names:
             if n == host or fnmatch.fnmatch(host, n):
                 return True
@@ -739,11 +739,11 @@ class ConfigWindow(tk.Toplevel):
         messagebox.showinfo("配置已保存", "配置已成功保存。")
 
 class BGACNWindow(tk.Toplevel):
-    """bgacn.com 专用优选窗口"""
+    """Cloudflare 网站优选窗口（目标域名可改，默认 bgacn.com）"""
 
     def __init__(self, parent):
         super().__init__(parent)
-        self.title("bgacn.com 专用优选")
+        self.title("Cloudflare 网站优选 IP（默认 bgacn.com）")
         self.geometry("660x520")
         self.running = False
         self.results = []
@@ -752,7 +752,7 @@ class BGACNWindow(tk.Toplevel):
         row1.pack(pady=8, fill=tk.X, padx=10)
         ttk.Label(row1, text="目标域名:").grid(row=0, column=0, padx=5)
         self.target_entry = ttk.Entry(row1, width=16)
-        self.target_entry.insert(0, "bgacn.com")
+        self.target_entry.insert(0, "bgacn.com")  # 默认 bgacn.com，可改成任意 CF 网站
         self.target_entry.grid(row=0, column=1, padx=5)
 
         ttk.Label(row1, text="测试数量:").grid(row=0, column=2, padx=5)
@@ -780,6 +780,10 @@ class BGACNWindow(tk.Toplevel):
         self.apply_btn.pack(side=tk.LEFT, padx=5)
         self.remove_btn = ttk.Button(row2, text="从Hosts移除", command=self.remove_hosts)
         self.remove_btn.pack(side=tk.LEFT, padx=5)
+        self.yaml_btn = ttk.Button(row2, text="生成YAML", command=self.export_yaml)
+        self.yaml_btn.pack(side=tk.LEFT, padx=5)
+        self.merge_btn = ttk.Button(row2, text="生成Merge", command=self.export_merge)
+        self.merge_btn.pack(side=tk.LEFT, padx=5)
 
         columns = ('ip', 'hits', 'avg', 'worst')
         self.tree = ttk.Treeview(self, columns=columns, show='headings', selectmode='browse')
@@ -790,7 +794,7 @@ class BGACNWindow(tk.Toplevel):
         self.tree.column('hits', anchor='center', width=70)
         self.tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=6)
 
-        self.status = ttk.Label(self, text="以目标站 SNI 测 TLS 握手，按稳定性排序（命中率优先）", relief=tk.SUNKEN, anchor='w')
+        self.status = ttk.Label(self, text="目标域名可改成任何托管在 Cloudflare 的网站 | 以目标站 SNI 测 TLS 握手，按稳定性排序（命中率优先）", relief=tk.SUNKEN, anchor='w')
         self.status.pack(fill=tk.X, side=tk.BOTTOM)
 
     def start_scan(self):
@@ -858,6 +862,41 @@ class BGACNWindow(tk.Toplevel):
         ok, msg = self._scanner().remove_hosts()
         messagebox.showinfo("从Hosts移除", msg)
 
+    def _export(self, kind):
+        if not self.results:
+            messagebox.showinfo("导出", "请先运行优选。")
+            return
+        sel = self.tree.selection()
+        ip = self.tree.item(sel[0], 'values')[0] if sel else self.results[0]['ip']
+        target = self.target_entry.get().strip() or 'bgacn.com'
+        is_yaml = kind == "yaml"
+        path = filedialog.asksaveasfilename(
+            title="生成 Clash 独立配置" if is_yaml else "生成 Clash Verge 覆写合并片段",
+            defaultextension=".yaml",
+            initialfile=f"{target}-clash.yaml" if is_yaml else f"{target}-merge.yaml",
+            filetypes=[("YAML", "*.yaml *.yml"), ("所有文件", "*.*")],
+        )
+        if not path:
+            return
+        text = clash_yaml_text(ip, target) if is_yaml else clash_merge_text(ip, target)
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(text)
+        except OSError as e:
+            messagebox.showerror("导出", f"写入失败: {e}")
+            return
+        msg = f"已生成 -> {path}（{target} -> {ip}）"
+        messagebox.showinfo("导出", msg)
+        self.status.config(text=msg)
+
+    def export_yaml(self):
+        """生成 Clash 独立配置（纯直连，无需订阅）。"""
+        self._export("yaml")
+
+    def export_merge(self):
+        """生成 Clash Verge 覆写合并片段（挂到订阅上用）。"""
+        self._export("merge")
+
 
 class Application(tk.Tk):
     """主应用程序类"""
@@ -868,7 +907,7 @@ class Application(tk.Tk):
         self.app_config = self.scanner.config
         self.running = False
         self.results = []
-        self.version = "1.2.0"
+        self.version = "1.3.0"
         self.init_ui()
         self.load_history()
 
@@ -903,7 +942,7 @@ class Application(tk.Tk):
         self.apply_hosts_btn = ttk.Button(control_frame, text="应用到Hosts", command=self.apply_hosts)
         self.apply_hosts_btn.grid(row=0, column=6, padx=10, pady=5)
 
-        self.bgacn_btn = ttk.Button(control_frame, text="bgacn.com 优选", command=self.open_bgacn)
+        self.bgacn_btn = ttk.Button(control_frame, text="CF 网站优选", command=self.open_bgacn)
         self.bgacn_btn.grid(row=0, column=7, padx=10, pady=5)
 
         columns = ('ip', 'tcp', 'http', 'https', 'score')
@@ -983,7 +1022,7 @@ class Application(tk.Tk):
         HistoryWindow(self)
 
     def open_bgacn(self):
-        """打开 bgacn.com 专用优选窗口"""
+        """打开 Cloudflare 网站优选窗口（目标域名可改，默认 bgacn.com）"""
         BGACNWindow(self)
 
     def start_scan(self):
@@ -1159,11 +1198,50 @@ class Application(tk.Tk):
              else:
                  messagebox.showinfo("导出", "没有有效的扫描结果可以导出。")
 
+def clash_yaml_text(ip, target):
+    """纯直连 Clash 配置：无需任何节点订阅，导入即加速 target。"""
+    return f"""# {target} 优选 IP 最小配置（纯直连，无需任何节点订阅）
+# 导入 Clash / ClashMeta / Clash Verge 后开 TUN/系统代理即生效
+mixed-port: 7890
+allow-lan: false
+mode: Rule
+log-level: info
+unified-delay: true
+
+dns:
+  enable: true
+  nameserver:
+    - 223.5.5.5
+    - 119.29.29.29
+
+hosts:
+  {target}: {ip}
+  "+.{target}": {ip}
+
+rules:
+  - DOMAIN-SUFFIX,{target},DIRECT
+  - MATCH,DIRECT
+"""
+
+
+def clash_merge_text(ip, target):
+    """Clash Verge「覆写合并」片段：挂到已有订阅/配置上，更新不丢。"""
+    return f"""# Clash Verge 覆写合并片段：{target} -> {ip}
+dns:
+  enable: true
+hosts:
+  {target}: {ip}
+  "+.{target}": {ip}
+rules:
+  - DOMAIN-SUFFIX,{target},DIRECT
+"""
+
+
 def run_bgacn_cli(argv):
-    """bgacn.com 专用优选命令行模式: python cf_ip_scanner.py bgacn [--apply|--remove]"""
+    """Cloudflare 站点优选命令行模式: python cf_ip_scanner.py bgacn [--apply|--remove|--yaml|--merge]"""
     ap = argparse.ArgumentParser(
         prog="cf_ip_scanner.py bgacn",
-        description="bgacn.com 专用 Cloudflare 优选 IP（SNI 握手测速 + 稳定性排序）",
+        description="托管在 Cloudflare 上网站的优选 IP（SNI 握手测速 + 稳定性排序，默认 bgacn.com）",
     )
     ap.add_argument("--target", default="bgacn.com", help="目标域名（默认 bgacn.com）")
     ap.add_argument("--count", type=int, default=800, help="采样 IP 数量（默认 800）")
@@ -1171,8 +1249,11 @@ def run_bgacn_cli(argv):
     ap.add_argument("--timeout", type=float, default=3.0, help="单次握手超时秒（默认 3）")
     ap.add_argument("--top", type=int, default=10, help="展示前 N 个结果（默认 10）")
     ap.add_argument("--workers", type=int, default=120, help="并发线程数（默认 120）")
+    ap.add_argument("--ip", help="直接指定优选 IP、跳过扫描（配合 --apply/--yaml/--merge）")
     ap.add_argument("--apply", action="store_true", help="把最稳的 IP 写入 hosts（需管理员）")
     ap.add_argument("--remove", action="store_true", help="从 hosts 移除本工具写入的条目")
+    ap.add_argument("--yaml", metavar="FILE", help="生成 Clash 独立配置（纯直连，无需订阅）到 FILE")
+    ap.add_argument("--merge", metavar="FILE", help="生成 Clash Verge 覆写合并片段到 FILE")
     ap.add_argument("--json", help="把结果存成 JSON 文件")
     args = ap.parse_args(argv)
 
@@ -1183,37 +1264,58 @@ def run_bgacn_cli(argv):
         print(("[+] " if ok else "[*] ") + msg)
         return 0
 
-    t0 = time.time()
-    good = scanner.scan(args.count, workers=args.workers)
-    dt = time.time() - t0
+    if args.ip:
+        best = {"ip": args.ip}
+    else:
+        t0 = time.time()
+        good = scanner.scan(args.count, workers=args.workers)
+        dt = time.time() - t0
 
-    if not good:
-        print("[-] 没有找到可用 IP，可增大 --count 或 --timeout 重试。")
-        return 1
+        if not good:
+            print("[-] 没有找到可用 IP，可增大 --count 或 --timeout 重试。")
+            return 1
 
-    print(f"\n[+] 扫描完成 {dt:.0f}s | 可用 {len(good)} 个 IP（稳定性优先排序）\n")
-    print(f"{'IP':<16} {'命中':>8} {'平均握手':>10} {'最差握手':>10}")
-    for r in good[: args.top]:
-        print(f"{r['ip']:<16} {r['hits']}/{r['reps']:<6} {r['avg'] * 1000:>7.0f}ms {r['worst'] * 1000:>7.0f}ms")
+        print(f"\n[+] 扫描完成 {dt:.0f}s | 可用 {len(good)} 个 IP（稳定性优先排序）\n")
+        print(f"{'IP':<16} {'命中':>8} {'平均握手':>10} {'最差握手':>10}")
+        for r in good[: args.top]:
+            print(f"{r['ip']:<16} {r['hits']}/{r['reps']:<6} {r['avg'] * 1000:>7.0f}ms {r['worst'] * 1000:>7.0f}ms")
 
-    best = good[0]
-    print(f"\n[★] 最稳 IP: {best['ip']}（命中 {best['hits']}/{best['reps']}，平均握手 {best['avg'] * 1000:.0f}ms）")
+        best = good[0]
+        print(f"\n[★] 最稳 IP: {best['ip']}（命中 {best['hits']}/{best['reps']}，平均握手 {best['avg'] * 1000:.0f}ms）")
 
-    if args.json:
-        with open(args.json, "w", encoding="utf-8") as f:
-            json.dump({
-                'generated': time.time(),
-                'target': args.target,
-                'results': good[:50],
-            }, f, indent=2, ensure_ascii=False)
-        print(f"[+] 结果已存 -> {args.json}")
+        if args.json:
+            with open(args.json, "w", encoding="utf-8") as f:
+                json.dump({
+                    'generated': time.time(),
+                    'target': args.target,
+                    'results': good[:50],
+                }, f, indent=2, ensure_ascii=False)
+            print(f"[+] 结果已存 -> {args.json}")
+
+    if args.yaml:
+        try:
+            with open(args.yaml, "w", encoding="utf-8") as f:
+                f.write(clash_yaml_text(best["ip"], args.target))
+            print(f"[+] 已生成 Clash 独立配置 -> {args.yaml}\n      {args.target} -> {best['ip']}（纯直连，无需订阅）")
+        except OSError as e:
+            print(f"[!] 写入失败: {e}")
+
+    if args.merge:
+        try:
+            with open(args.merge, "w", encoding="utf-8") as f:
+                f.write(clash_merge_text(best["ip"], args.target))
+            print(f"[+] 已生成覆写合并片段 -> {args.merge}\n      {args.target} -> {best['ip']}（挂到订阅上即可）")
+        except OSError as e:
+            print(f"[!] 写入失败: {e}")
 
     if args.apply:
         ok, msg = scanner.apply_hosts(best["ip"])
         print(("[+] " if ok else "[-] ") + msg)
         return 0 if ok else 1
 
-    print("\n[*] 加 --apply 写入 hosts 生效（管理员运行）。")
+    if not (args.yaml or args.merge):
+        print("\n[*] 加 --apply 写入 hosts 生效（管理员运行）；"
+              "或 --yaml / --merge 导出 Clash 配置给手机等设备用。")
     return 0
 
 
