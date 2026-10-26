@@ -19,6 +19,11 @@
 
 *   **⚙️ 参数:** `--target`（默认 bgacn.com）、`--count`、`--reps`、`--timeout`、`--top`、`--workers`、`--apply`、`--remove`、`--json`。
 
+*   **🖥️ 独立版 bgacn 工具（本 fork 附带）:**
+    *   纯标准库实现的独立版 `bgacn_ip_finder.py`（命令行）与 `bgacn_ip_finder_gui.py`（图形界面），零依赖、免安装即可运行。 📦
+    *   提供 `--gui` 命令行入口一键打开图形界面；hosts 写入 / 移除均带标记，可随时还原。 🧩
+    *   **Releases 提供 Windows exe**（`BGACNIPFinder.exe` 独立版图形工具、`CloudFlareIPScanner.exe` 主程序），免装 Python 双击即用。 ⬇️
+
 <hr>
 
 ## 📜 版本 1.1.0 (2025.3.3)

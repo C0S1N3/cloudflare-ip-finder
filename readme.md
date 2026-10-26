@@ -86,6 +86,14 @@ python cf_ip_scanner.py bgacn --target www.bgacn.com --count 1500 --reps 5 --jso
 | `--remove` | — | 从 hosts 移除本工具写入的条目 |
 | `--json` | — | 结果存成 JSON 文件 |
 
+**独立版工具（零依赖）**: 仓库另附纯标准库实现的独立版 [bgacn_ip_finder.py](bgacn_ip_finder.py)（命令行）和 [bgacn_ip_finder_gui.py](bgacn_ip_finder_gui.py)（图形界面），不依赖 requests/dnspython，可直接双击打包的 exe 使用（见 [Releases](../../releases)）：
+
+```bash
+python bgacn_ip_finder_gui.py           # 启动图形界面
+python bgacn_ip_finder.py --gui         # 同上
+python bgacn_ip_finder.py --apply       # 命令行扫描并写入 hosts
+```
+
 ## 🤝 贡献与反馈
 
 欢迎大家为本项目贡献力量！你可以通过以下方式参与：
