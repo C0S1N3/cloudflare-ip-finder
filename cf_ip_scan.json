@@ -1,0 +1,402 @@
+[
+  {
+    "ip": "162.159.152.139",
+    "connect": 0.13691160000007585,
+    "tls": 0.20843409999997675,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "172.66.134.181",
+    "connect": 0.17936409999992975,
+    "tls": 0.22105509999983042,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.31.4.229",
+    "connect": 0.25003130000004603,
+    "tls": 0.22262710000040897,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.31.4.28",
+    "connect": 0.1873347000000649,
+    "tls": 0.22376439999970898,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "162.159.224.122",
+    "connect": 0.21977209999977276,
+    "tls": 0.2265932000000248,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "172.66.139.111",
+    "connect": 0.199238200000309,
+    "tls": 0.22924620000003415,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.31.4.82",
+    "connect": 0.20935190000000148,
+    "tls": 0.23207339999999022,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.31.4.247",
+    "connect": 0.21308710000039355,
+    "tls": 0.23444969999991372,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "190.93.245.138",
+    "connect": 0.2200886000000537,
+    "tls": 0.2384618999999475,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.31.4.109",
+    "connect": 0.2564431999999215,
+    "tls": 0.2395816999996896,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.31.4.189",
+    "connect": 0.2321020999997927,
+    "tls": 0.24370290000024397,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.21.244.18",
+    "connect": 0.2605052999997497,
+    "tls": 0.245374499999798,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "162.159.82.164",
+    "connect": 0.28079949999983,
+    "tls": 0.24688579999974536,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.31.4.142",
+    "connect": 0.2405348999996022,
+    "tls": 0.24752200000011726,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.31.4.226",
+    "connect": 0.2792323000003307,
+    "tls": 0.248816700000134,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "190.93.245.38",
+    "connect": 0.21305350000011458,
+    "tls": 0.25018409999984215,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.31.4.214",
+    "connect": 0.21077439999999115,
+    "tls": 0.2503197999999429,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "188.114.99.62",
+    "connect": 0.21317210000006526,
+    "tls": 0.2508421000002272,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.21.244.225",
+    "connect": 0.2491294999999809,
+    "tls": 0.2554018000000724,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "190.93.247.64",
+    "connect": 0.2671898000003239,
+    "tls": 0.25862729999971634,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.31.4.11",
+    "connect": 0.2558870999996543,
+    "tls": 0.2603512000000592,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.31.4.175",
+    "connect": 0.23208440000007613,
+    "tls": 0.26123869999992166,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.31.4.188",
+    "connect": 0.24821530000008352,
+    "tls": 0.2615771999999197,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.21.244.146",
+    "connect": 0.27706490000036865,
+    "tls": 0.2661851000002571,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.31.4.12",
+    "connect": 0.2324244000001272,
+    "tls": 0.2671330999996826,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "104.17.47.201",
+    "connect": 1.0332988999998634,
+    "tls": 0.27433750000000146,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.31.4.205",
+    "connect": 0.2382407999998577,
+    "tls": 0.27548539999997956,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "188.114.98.174",
+    "connect": 1.23589660000016,
+    "tls": 0.27568690000043716,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.21.244.83",
+    "connect": 0.2693125000000691,
+    "tls": 0.27908190000016475,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.21.244.124",
+    "connect": 0.23787629999969795,
+    "tls": 0.28056050000031973,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "104.24.81.221",
+    "connect": 0.45682609999994384,
+    "tls": 0.28143679999993765,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.31.4.125",
+    "connect": 0.2711024999998699,
+    "tls": 0.2835408999999345,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.21.244.213",
+    "connect": 0.24115359999996144,
+    "tls": 0.28412200000002485,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "190.93.246.204",
+    "connect": 0.3020317000000432,
+    "tls": 0.285367199999655,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.31.4.128",
+    "connect": 0.27076609999994616,
+    "tls": 0.28613599999971484,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.31.4.144",
+    "connect": 0.2553342999999586,
+    "tls": 0.2869930000001659,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.31.4.153",
+    "connect": 0.28368219999993016,
+    "tls": 0.2877761999998256,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.31.4.83",
+    "connect": 0.28644260000010036,
+    "tls": 0.2899614000002657,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.21.244.194",
+    "connect": 0.24731189999965864,
+    "tls": 0.29707669999970676,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.21.244.14",
+    "connect": 0.2578096999995978,
+    "tls": 0.30091059999995196,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "141.101.115.202",
+    "connect": 0.25527640000018437,
+    "tls": 0.3030472999998892,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "188.114.97.177",
+    "connect": 0.23109460000023319,
+    "tls": 0.3061805000002096,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "162.159.143.186",
+    "connect": 2.1435395000003155,
+    "tls": 0.3184521999996832,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.21.244.62",
+    "connect": 0.32919159999983094,
+    "tls": 0.3254178000001957,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "103.21.244.89",
+    "connect": 0.26653110000006563,
+    "tls": 0.3278463000001466,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "188.114.98.185",
+    "connect": 0.2579399999999623,
+    "tls": 0.33297589999983757,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "172.67.156.203",
+    "connect": 0.2675776000000951,
+    "tls": 0.33619910000015807,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "104.17.137.151",
+    "connect": 0.7393853999997191,
+    "tls": 0.3414133999999649,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "172.67.236.160",
+    "connect": 0.273967999999968,
+    "tls": 0.3451583999999457,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  },
+  {
+    "ip": "172.66.209.200",
+    "connect": 0.25523889999976745,
+    "tls": 0.3460645999998633,
+    "ok": true,
+    "http": 200,
+    "cert": "*.bgacn.com bgacn.com"
+  }
+]
