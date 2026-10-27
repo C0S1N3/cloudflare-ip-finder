@@ -5,18 +5,18 @@ cf-ip-finder GUI — 托管在 Cloudflare 上网站的优选 IP 图形界面
 
 为指定的 Cloudflare 托管网站优选可直连的 CF IP（默认 bgacn.com，
 「目标域名」输入框可改成任意托管在 Cloudflare 的网站）。
-与命令行版共用同一套扫描/hosts/导出逻辑（bgacn_ip_finder.py），纯标准库（tkinter）。
+与命令行版共用同一套扫描/hosts/导出逻辑（cf_ip_finder.py），纯标准库（tkinter）。
 
 用法:
-  python bgacn_ip_finder_gui.py
-  python bgacn_ip_finder.py --gui
+  python cf_ip_finder_gui.py
+  python cf_ip_finder.py --gui
 """
 
 import threading
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
-import bgacn_ip_finder as core
+import cf_ip_finder as core
 
 
 class BGACNApp(tk.Tk):

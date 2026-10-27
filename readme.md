@@ -44,50 +44,50 @@
 
 ## 🎯 CF 网站优选
 
-目标站（可指定任意托管在 Cloudflare 的网站）托管在 Cloudflare，默认 DNS 给出的 CF IP 在国内经常 TLS 握手被掐（握手 10 秒+ 或直接超时）。
+目标站托管在 Cloudflare，默认 DNS 给出的 CF IP 在国内经常 TLS 握手被掐（握手 10 秒+ 或直接超时）。
 通用模式拿 speed.cloudflare.com 等无关域名测延迟，对这种情况参考价值有限；本功能专为这类场景设计：
 
-- **以目标站 SNI 实测握手**: 直接对候选 IP 做 `SNI=目标域名`（默认 bgacn.com）的 TLS 握手，被限速掐的正是这一步，测得才准。
+- **以目标站 SNI 实测握手**: 直接对候选 IP 做 `SNI=目标域名` 的 TLS 握手，被限速掐的正是这一步，测得才准。
 - **校验真实性**: 证书必须覆盖目标域，且 `HEAD /` 返回 HTTP 200，确认该 IP 真的在服务目标站。
 - **按稳定性排序**: 每个 IP 多次握手，按命中率降序排序（单次最快往往最抖），再看平均/最差握手耗时。
-- **安全写 hosts**: 写入时自动清理目标域的旧映射，条目带 `cf-ip-finder:bgacn` 标记，可随时一键移除，不碰你自己写的 hosts。
+- **安全写 hosts**: 写入时自动清理目标域的旧映射，条目带本工具专用注释标记，可随时一键移除，不碰你自己写的 hosts。
 - **导出 Clash 配置**: 一键生成 Clash 独立配置（纯直连、无需订阅）或 Clash Verge 覆写合并片段，手机/路由器等不方便改 hosts 的设备也能用。
 - **导出 Magisk 模块**: root 手机可直接导出 Magisk 模块（systemless hosts），刷入重启即生效，连 Clash 都不用装。
 
-**图形界面**：点击主界面的 "CF 网站优选" 按钮，设置目标域名（默认 bgacn.com，可改成任何托管在 Cloudflare 的网站）、测试数量、握手次数后点 "开始优选"，
+**图形界面**：点击主界面的 "CF 网站优选" 按钮，设置目标域名（可填任意托管在 Cloudflare 的网站）、测试数量、握手次数后点 "开始优选"，
 完成后选中结果（不选则用最稳的）点 "写入Hosts"（需管理员权限），或点 "生成YAML"/"生成Merge"/"导出Magisk" 导出配置；"从Hosts移除" 可随时还原。
 
 **命令行**（适合脚本化 / 定时重跑）：
 
 ```bash
 # 扫描并打印最稳 IP
-python cf_ip_scanner.py bgacn
+python cf_ip_scanner.py cf
 
 # 扫描并写入 hosts（需管理员权限）
-python cf_ip_scanner.py bgacn --apply
+python cf_ip_scanner.py cf --apply
 
 # 换 IP：重新跑一次即可（自动清理旧映射）
-python cf_ip_scanner.py bgacn --apply
+python cf_ip_scanner.py cf --apply
 
 # 撤销：移除本工具写入的条目
-python cf_ip_scanner.py bgacn --remove
+python cf_ip_scanner.py cf --remove
 
 # 生成 Clash 独立配置 / Clash Verge 覆写合并片段
-python cf_ip_scanner.py bgacn --yaml clash.yaml --merge merge.yaml
+python cf_ip_scanner.py cf --yaml clash.yaml --merge merge.yaml
 
 # 生成 Magisk 模块（root 手机刷入，免 Clash）
-python cf_ip_scanner.py bgacn --magisk module.zip
+python cf_ip_scanner.py cf --magisk module.zip
 
 # 已有可用 IP 时直接生成，不扫描
-python cf_ip_scanner.py bgacn --ip 1.2.3.4 --yaml clash.yaml
+python cf_ip_scanner.py cf --ip 1.2.3.4 --yaml clash.yaml
 
 # 自定义参数
-python cf_ip_scanner.py bgacn --target www.bgacn.com --count 1500 --reps 5 --json result.json
+python cf_ip_scanner.py cf --target www.example.com --count 1500 --reps 5 --json result.json
 ```
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
-| `--target` | `bgacn.com` | 目标域名（任意托管在 Cloudflare 的网站） |
+| `--target` | `预填域名` | 目标域名（任意托管在 Cloudflare 的网站） |
 | `--count` | `800` | 采样 IP 数量 |
 | `--reps` | `3` | 每个 IP 握手次数 |
 | `--timeout` | `3.0` | 单次握手超时（秒） |
@@ -101,13 +101,13 @@ python cf_ip_scanner.py bgacn --target www.bgacn.com --count 1500 --reps 5 --jso
 | `--magisk` | — | 生成 Magisk 模块 zip（systemless hosts，需 root） |
 | `--json` | — | 结果存成 JSON 文件 |
 
-**独立版工具（零依赖）**: 仓库另附纯标准库实现的独立版 [bgacn_ip_finder.py](bgacn_ip_finder.py)（命令行）和 [bgacn_ip_finder_gui.py](bgacn_ip_finder_gui.py)（图形界面），不依赖 requests/dnspython，可直接双击打包的 exe 使用（见 [Releases](../../releases)）：
+**独立版工具（零依赖）**: 仓库另附纯标准库实现的独立版 [cf_ip_finder.py](cf_ip_finder.py)（命令行）和 [cf_ip_finder_gui.py](cf_ip_finder_gui.py)（图形界面），不依赖 requests/dnspython，可直接双击打包的 exe 使用（见 [Releases](../../releases)）：
 
 ```bash
-python bgacn_ip_finder_gui.py           # 启动图形界面
-python bgacn_ip_finder.py --gui         # 同上
-python bgacn_ip_finder.py --apply       # 命令行扫描并写入 hosts
-python bgacn_ip_finder.py --yaml c.yaml --merge m.yaml   # 导出 Clash 配置
+python cf_ip_finder_gui.py           # 启动图形界面
+python cf_ip_finder.py --gui         # 同上
+python cf_ip_finder.py --apply       # 命令行扫描并写入 hosts
+python cf_ip_finder.py --yaml c.yaml --merge m.yaml   # 导出 Clash 配置
 ```
 
 ## 🧩 新手指南：怎么用 Clash 加速（小白向）
@@ -132,7 +132,7 @@ python bgacn_ip_finder.py --yaml c.yaml --merge m.yaml   # 导出 Clash 配置
 - 电脑：打开「系统代理」；想全局生效再开「TUN 模式」（需要授权）。
 
 **5. 验证**
-- 打开目标网站（默认 bgacn.com），明显变快就成功了。没效果就重新跑一次优选换 IP，再重新生成导入一遍。
+- 打开目标网站，明显变快就成功了。没效果就重新跑一次优选换 IP，再重新生成导入一遍。
 
 > 提示：只想加速目标站的话**不要开全局代理**，规则会自动让目标站走直连优选 IP，其它流量不受影响。
 

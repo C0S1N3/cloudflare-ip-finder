@@ -1303,12 +1303,12 @@ def magisk_module_zip(path, ip, target):
 
 
 def run_bgacn_cli(argv):
-    """Cloudflare 站点优选命令行模式: python cf_ip_scanner.py bgacn [--apply|--remove|--yaml|--merge]"""
+    """Cloudflare 站点优选命令行模式: python cf_ip_scanner.py cf [--apply|--remove|--yaml|--merge|--magisk]"""
     ap = argparse.ArgumentParser(
-        prog="cf_ip_scanner.py bgacn",
-        description="托管在 Cloudflare 上网站的优选 IP（SNI 握手测速 + 稳定性排序，默认 bgacn.com）",
+        prog="cf_ip_scanner.py cf",
+        description="托管在 Cloudflare 上网站的优选 IP（SNI 握手测速 + 稳定性排序）",
     )
-    ap.add_argument("--target", default="bgacn.com", help="目标域名（默认 bgacn.com）")
+    ap.add_argument("--target", default="bgacn.com", help="目标域名（任意托管在 Cloudflare 的网站）")
     ap.add_argument("--count", type=int, default=800, help="采样 IP 数量（默认 800）")
     ap.add_argument("--reps", type=int, default=3, help="每个 IP 握手次数（默认 3）")
     ap.add_argument("--timeout", type=float, default=3.0, help="单次握手超时秒（默认 3）")
@@ -1390,7 +1390,7 @@ def run_bgacn_cli(argv):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "bgacn":
+    if len(sys.argv) > 1 and sys.argv[1] in ("cf", "bgacn"):
         sys.exit(run_bgacn_cli(sys.argv[2:]))
     app = Application()
     app.mainloop()

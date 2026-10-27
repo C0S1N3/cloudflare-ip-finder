@@ -13,14 +13,14 @@ cf-ip-finder — 托管在 Cloudflare 上网站的优选 IP 工具
     不方便改 hosts 的场景，把优选 IP 交给 Clash 生效）
 
 用法:
-  python bgacn_ip_finder.py                 # 扫描并打印最稳的 IP
-  python bgacn_ip_finder.py --gui           # 启动图形界面
-  python bgacn_ip_finder.py --apply         # 扫描并把最优 IP 写入 hosts（需管理员）
-  python bgacn_ip_finder.py --remove        # 从 hosts 删除本工具写入的条目
-  python bgacn_ip_finder.py --yaml c.yaml --merge m.yaml   # 扫描并导出 Clash 配置
-  python bgacn_ip_finder.py --ip 1.2.3.4 --yaml c.yaml     # 指定 IP 直接生成，不扫描
-  python bgacn_ip_finder.py --magisk m.zip                 # 导出 Magisk 模块（root 手机直刷）
-  python bgacn_ip_finder.py --target example.com --count 1500 --reps 5
+  python cf_ip_finder.py                 # 扫描并打印最稳的 IP
+  python cf_ip_finder.py --gui           # 启动图形界面
+  python cf_ip_finder.py --apply         # 扫描并把最优 IP 写入 hosts（需管理员）
+  python cf_ip_finder.py --remove        # 从 hosts 删除本工具写入的条目
+  python cf_ip_finder.py --yaml c.yaml --merge m.yaml   # 扫描并导出 Clash 配置
+  python cf_ip_finder.py --ip 1.2.3.4 --yaml c.yaml     # 指定 IP 直接生成，不扫描
+  python cf_ip_finder.py --magisk m.zip                 # 导出 Magisk 模块（root 手机直刷）
+  python cf_ip_finder.py --target example.com --count 1500 --reps 5
 """
 
 import argparse
@@ -366,7 +366,7 @@ def main():
     args = ap.parse_args()
 
     if args.gui:
-        from bgacn_ip_finder_gui import run_gui
+        from cf_ip_finder_gui import run_gui
         run_gui()
         return
 
