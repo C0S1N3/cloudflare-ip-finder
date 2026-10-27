@@ -19,6 +19,7 @@ cf-ip-finder — 托管在 Cloudflare 上网站的优选 IP 工具
   python bgacn_ip_finder.py --remove        # 从 hosts 删除本工具写入的条目
   python bgacn_ip_finder.py --yaml c.yaml --merge m.yaml   # 扫描并导出 Clash 配置
   python bgacn_ip_finder.py --ip 1.2.3.4 --yaml c.yaml     # 指定 IP 直接生成，不扫描
+  python bgacn_ip_finder.py --magisk m.zip                 # 导出 Magisk 模块（root 手机直刷）
   python bgacn_ip_finder.py --target example.com --count 1500 --reps 5
 """
 
@@ -30,6 +31,7 @@ import socket
 import ssl
 import sys
 import time
+import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ---- 默认目标（可用 --target 换成任何托管在 Cloudflare 的网站）----
@@ -291,6 +293,57 @@ def export_merge(path, ip, target):
     return True, f"已生成覆写合并片段 -> {path}\n      {target} -> {ip}（挂到订阅上即可）"
 
 
+# Magisk 模块安装脚本（Magisk 20.4+ 标准模板）
+_MAGISK_UPDATE_BINARY = """#!/sbin/sh
+umask 022
+ui_print() { echo "$1"; }
+require_new_magisk() {
+  ui_print "*******************************"
+  ui_print " Please install Magisk v20.4+! "
+  ui_print "*******************************"
+  exit 1
+}
+OUTFD=$2
+ZIPFILE=$3
+mount /data 2>/dev/null
+[ -f /data/adb/magisk/util_functions.sh ] || require_new_magisk
+. /data/adb/magisk/util_functions.sh
+[ $MAGISK_VER_CODE -lt 20400 ] && require_new_magisk
+install_module
+exit 0
+"""
+
+
+def _magisk_hosts_text(ip, target):
+    """模块里的 system/etc/hosts：安卓标准 localhost 表头 + 目标域映射。"""
+    lines = ["127.0.0.1       localhost", "::1             localhost", "",
+             f"# cf-ip-finder {target} -> {ip}"]
+    for n in _host_names(target):
+        lines.append(f"{ip}    {n}")
+    return "\n".join(lines) + "\n"
+
+
+def export_magisk(path, ip, target):
+    """生成 Magisk 模块 zip（systemless hosts，需 root 刷入），返回 (ok, msg)。"""
+    safe = ''.join(c if c.isalnum() else '-' for c in target.lower()).strip('-')
+    prop = (f"id=cf-hosts-{safe}\n"
+            f"name=CF优选hosts-{target}\n"
+            f"version=v1.4.0\n"
+            f"versionCode=14000\n"
+            f"author=cosmo\n"
+            f"description={target} -> {ip} Cloudflare 优选 IP（systemless hosts）\n")
+    try:
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr("META-INF/com/google/android/update-binary", _MAGISK_UPDATE_BINARY)
+            z.writestr("META-INF/com/google/android/updater-script", "#MAGISK\n")
+            z.writestr("module.prop", prop)
+            z.writestr("system/etc/hosts", _magisk_hosts_text(ip, target))
+    except OSError as e:
+        return False, f"写入失败: {e}"
+    return (True, f"已生成 Magisk 模块 -> {path}\n"
+                  f"      {target} -> {ip}（Magisk 里「从本地安装」刷入，重启生效，需 root）")
+
+
 # ---------------- 主入口 ----------------
 def main():
     ap = argparse.ArgumentParser(
@@ -302,11 +355,12 @@ def main():
     ap.add_argument("--reps", type=int, default=3, help="每个 IP 握手次数（默认 3）")
     ap.add_argument("--timeout", type=float, default=3.0, help="单次握手超时秒（默认 3）")
     ap.add_argument("--top", type=int, default=10, help="展示前 N 个（默认 10）")
-    ap.add_argument("--ip", help="直接指定优选 IP、跳过扫描（配合 --apply/--yaml/--merge）")
+    ap.add_argument("--ip", help="直接指定优选 IP、跳过扫描（配合 --apply/--yaml/--merge/--magisk）")
     ap.add_argument("--apply", action="store_true", help="把最稳的 IP 写入 Windows hosts（需管理员）")
     ap.add_argument("--remove", action="store_true", help="从 hosts 移除本工具写入的条目")
     ap.add_argument("--yaml", metavar="FILE", help="生成 Clash 独立配置（纯直连，无需订阅）到 FILE")
     ap.add_argument("--merge", metavar="FILE", help="生成 Clash Verge 覆写合并片段到 FILE")
+    ap.add_argument("--magisk", metavar="FILE", help="生成 Magisk 模块 zip（systemless hosts，需 root）到 FILE")
     ap.add_argument("--gui", action="store_true", help="启动图形界面")
     ap.add_argument("--json", help="把结果存成 JSON 文件")
     args = ap.parse_args()
@@ -353,14 +407,18 @@ def main():
         ok, msg = export_merge(args.merge, best["ip"], args.target)
         print(("[+] " if ok else "[!] ") + msg)
 
+    if args.magisk:
+        ok, msg = export_magisk(args.magisk, best["ip"], args.target)
+        print(("[+] " if ok else "[!] ") + msg)
+
     if args.apply:
         ok, msg = apply_hosts(best["ip"], args.target)
         print(("[+] " if ok else "[!] ") + msg)
         if ok:
             print("\n[*] 完成。浏览器直接访问即可，无需代理。若日后又卡，重新跑一次 --apply。")
-    elif not (args.yaml or args.merge):
+    elif not (args.yaml or args.merge or args.magisk):
         print("\n[*] 加 --apply 写入 hosts 生效（管理员运行）；"
-              "或 --yaml / --merge 导出 Clash 配置给手机等设备用。")
+              "或 --yaml / --merge / --magisk 导出配置给手机等设备用。")
 
 
 if __name__ == "__main__":

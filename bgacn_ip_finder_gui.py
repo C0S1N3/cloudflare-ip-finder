@@ -24,7 +24,7 @@ class BGACNApp(tk.Tk):
 
     def __init__(self):
         super().__init__()
-        self.title("Cloudflare 网站优选 IP 工具（默认 bgacn.com）")
+        self.title("Cloudflare 网站优选 IP 工具")
         self.geometry("680x520")
         self.running = False
         self.results = []
@@ -69,6 +69,8 @@ class BGACNApp(tk.Tk):
         self.yaml_btn.pack(side=tk.LEFT, padx=5)
         self.merge_btn = ttk.Button(row2, text="生成Merge", command=self.export_merge)
         self.merge_btn.pack(side=tk.LEFT, padx=5)
+        self.magisk_btn = ttk.Button(row2, text="导出Magisk", command=self.export_magisk)
+        self.magisk_btn.pack(side=tk.LEFT, padx=5)
 
         columns = ('ip', 'hits', 'avg', 'worst')
         self.tree = ttk.Treeview(self, columns=columns, show='headings', selectmode='browse')
@@ -170,15 +172,27 @@ class BGACNApp(tk.Tk):
         ip = self._pick_ip()
         target = self._target()
         is_yaml = kind == "yaml"
+        is_magisk = kind == "magisk"
+        if is_magisk:
+            title = "生成 Magisk 模块（systemless hosts，需 root）"
+            initial = f"{target}-magisk.zip"
+            types = [("ZIP", "*.zip"), ("所有文件", "*.*")]
+        elif is_yaml:
+            title = "生成 Clash 独立配置"
+            initial = f"{target}-clash.yaml"
+            types = [("YAML", "*.yaml *.yml"), ("所有文件", "*.*")]
+        else:
+            title = "生成 Clash Verge 覆写合并片段"
+            initial = f"{target}-merge.yaml"
+            types = [("YAML", "*.yaml *.yml"), ("所有文件", "*.*")]
         path = filedialog.asksaveasfilename(
-            title="生成 Clash 独立配置" if is_yaml else "生成 Clash Verge 覆写合并片段",
-            defaultextension=".yaml",
-            initialfile=f"{target}-clash.yaml" if is_yaml else f"{target}-merge.yaml",
-            filetypes=[("YAML", "*.yaml *.yml"), ("所有文件", "*.*")],
+            title=title, defaultextension=".zip" if is_magisk else ".yaml",
+            initialfile=initial, filetypes=types,
         )
         if not path:
             return
-        ok, msg = (core.export_yaml if is_yaml else core.export_merge)(path, ip, target)
+        fn = core.export_magisk if is_magisk else (core.export_yaml if is_yaml else core.export_merge)
+        ok, msg = fn(path, ip, target)
         (messagebox.showinfo if ok else messagebox.showerror)("导出", msg)
         self.status.config(text=msg.splitlines()[0])
 
@@ -189,6 +203,10 @@ class BGACNApp(tk.Tk):
     def export_merge(self):
         """生成 Clash Verge 覆写合并片段（挂到订阅上用）。"""
         self._export("merge")
+
+    def export_magisk(self):
+        """生成 Magisk 模块 zip（root 手机刷入，免 Clash）。"""
+        self._export("magisk")
 
 
 def run_gui():

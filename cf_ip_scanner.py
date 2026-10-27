@@ -10,6 +10,7 @@ import json
 import csv
 import ipaddress
 import threading
+import zipfile
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -743,7 +744,7 @@ class BGACNWindow(tk.Toplevel):
 
     def __init__(self, parent):
         super().__init__(parent)
-        self.title("Cloudflare 网站优选 IP（默认 bgacn.com）")
+        self.title("Cloudflare 网站优选 IP")
         self.geometry("660x520")
         self.running = False
         self.results = []
@@ -784,6 +785,8 @@ class BGACNWindow(tk.Toplevel):
         self.yaml_btn.pack(side=tk.LEFT, padx=5)
         self.merge_btn = ttk.Button(row2, text="生成Merge", command=self.export_merge)
         self.merge_btn.pack(side=tk.LEFT, padx=5)
+        self.magisk_btn = ttk.Button(row2, text="导出Magisk", command=self.export_magisk)
+        self.magisk_btn.pack(side=tk.LEFT, padx=5)
 
         columns = ('ip', 'hits', 'avg', 'worst')
         self.tree = ttk.Treeview(self, columns=columns, show='headings', selectmode='browse')
@@ -870,24 +873,37 @@ class BGACNWindow(tk.Toplevel):
         ip = self.tree.item(sel[0], 'values')[0] if sel else self.results[0]['ip']
         target = self.target_entry.get().strip() or 'bgacn.com'
         is_yaml = kind == "yaml"
+        is_magisk = kind == "magisk"
+        if is_magisk:
+            title = "生成 Magisk 模块（systemless hosts，需 root）"
+            initial = f"{target}-magisk.zip"
+            types = [("ZIP", "*.zip"), ("所有文件", "*.*")]
+        elif is_yaml:
+            title = "生成 Clash 独立配置"
+            initial = f"{target}-clash.yaml"
+            types = [("YAML", "*.yaml *.yml"), ("所有文件", "*.*")]
+        else:
+            title = "生成 Clash Verge 覆写合并片段"
+            initial = f"{target}-merge.yaml"
+            types = [("YAML", "*.yaml *.yml"), ("所有文件", "*.*")]
         path = filedialog.asksaveasfilename(
-            title="生成 Clash 独立配置" if is_yaml else "生成 Clash Verge 覆写合并片段",
-            defaultextension=".yaml",
-            initialfile=f"{target}-clash.yaml" if is_yaml else f"{target}-merge.yaml",
-            filetypes=[("YAML", "*.yaml *.yml"), ("所有文件", "*.*")],
+            title=title, defaultextension=".zip" if is_magisk else ".yaml",
+            initialfile=initial, filetypes=types,
         )
         if not path:
             return
-        text = clash_yaml_text(ip, target) if is_yaml else clash_merge_text(ip, target)
         try:
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(text)
+            if is_magisk:
+                ok, msg = magisk_module_zip(path, ip, target)
+            else:
+                text = clash_yaml_text(ip, target) if is_yaml else clash_merge_text(ip, target)
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(text)
+                ok, msg = True, f"已生成 -> {path}（{target} -> {ip}）"
         except OSError as e:
-            messagebox.showerror("导出", f"写入失败: {e}")
-            return
-        msg = f"已生成 -> {path}（{target} -> {ip}）"
-        messagebox.showinfo("导出", msg)
-        self.status.config(text=msg)
+            ok, msg = False, f"写入失败: {e}"
+        (messagebox.showinfo if ok else messagebox.showerror)("导出", msg)
+        self.status.config(text=msg.splitlines()[0])
 
     def export_yaml(self):
         """生成 Clash 独立配置（纯直连，无需订阅）。"""
@@ -896,6 +912,10 @@ class BGACNWindow(tk.Toplevel):
     def export_merge(self):
         """生成 Clash Verge 覆写合并片段（挂到订阅上用）。"""
         self._export("merge")
+
+    def export_magisk(self):
+        """生成 Magisk 模块 zip（root 手机刷入，免 Clash）。"""
+        self._export("magisk")
 
 
 class Application(tk.Tk):
@@ -907,7 +927,7 @@ class Application(tk.Tk):
         self.app_config = self.scanner.config
         self.running = False
         self.results = []
-        self.version = "1.3.0"
+        self.version = "1.4.0"
         self.init_ui()
         self.load_history()
 
@@ -1237,6 +1257,51 @@ rules:
 """
 
 
+# Magisk 模块安装脚本（Magisk 20.4+ 标准模板）
+MAGISK_UPDATE_BINARY = """#!/sbin/sh
+umask 022
+ui_print() { echo "$1"; }
+require_new_magisk() {
+  ui_print "*******************************"
+  ui_print " Please install Magisk v20.4+! "
+  ui_print "*******************************"
+  exit 1
+}
+OUTFD=$2
+ZIPFILE=$3
+mount /data 2>/dev/null
+[ -f /data/adb/magisk/util_functions.sh ] || require_new_magisk
+. /data/adb/magisk/util_functions.sh
+[ $MAGISK_VER_CODE -lt 20400 ] && require_new_magisk
+install_module
+exit 0
+"""
+
+
+def magisk_module_zip(path, ip, target):
+    """生成 Magisk 模块 zip（systemless hosts，需 root 刷入），返回 (ok, msg)。"""
+    safe = ''.join(c if c.isalnum() else '-' for c in target.lower()).strip('-')
+    names = [target] if target.startswith('www.') else [target, f'www.{target}']
+    hosts = ["127.0.0.1       localhost", "::1             localhost", "",
+             f"# cf-ip-finder {target} -> {ip}"] + [f"{ip}    {n}" for n in names]
+    prop = (f"id=cf-hosts-{safe}\n"
+            f"name=CF优选hosts-{target}\n"
+            f"version=v1.4.0\n"
+            f"versionCode=14000\n"
+            f"author=cosmo\n"
+            f"description={target} -> {ip} Cloudflare 优选 IP（systemless hosts）\n")
+    try:
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr("META-INF/com/google/android/update-binary", MAGISK_UPDATE_BINARY)
+            z.writestr("META-INF/com/google/android/updater-script", "#MAGISK\n")
+            z.writestr("module.prop", prop)
+            z.writestr("system/etc/hosts", "\n".join(hosts) + "\n")
+    except OSError as e:
+        return False, f"写入失败: {e}"
+    return (True, f"已生成 Magisk 模块 -> {path}\n"
+                  f"      {target} -> {ip}（Magisk 里「从本地安装」刷入，重启生效，需 root）")
+
+
 def run_bgacn_cli(argv):
     """Cloudflare 站点优选命令行模式: python cf_ip_scanner.py bgacn [--apply|--remove|--yaml|--merge]"""
     ap = argparse.ArgumentParser(
@@ -1254,6 +1319,7 @@ def run_bgacn_cli(argv):
     ap.add_argument("--remove", action="store_true", help="从 hosts 移除本工具写入的条目")
     ap.add_argument("--yaml", metavar="FILE", help="生成 Clash 独立配置（纯直连，无需订阅）到 FILE")
     ap.add_argument("--merge", metavar="FILE", help="生成 Clash Verge 覆写合并片段到 FILE")
+    ap.add_argument("--magisk", metavar="FILE", help="生成 Magisk 模块 zip（systemless hosts，需 root）到 FILE")
     ap.add_argument("--json", help="把结果存成 JSON 文件")
     args = ap.parse_args(argv)
 
@@ -1308,14 +1374,18 @@ def run_bgacn_cli(argv):
         except OSError as e:
             print(f"[!] 写入失败: {e}")
 
+    if args.magisk:
+        ok, msg = magisk_module_zip(args.magisk, best["ip"], args.target)
+        print(("[+] " if ok else "[!] ") + msg)
+
     if args.apply:
         ok, msg = scanner.apply_hosts(best["ip"])
         print(("[+] " if ok else "[-] ") + msg)
         return 0 if ok else 1
 
-    if not (args.yaml or args.merge):
+    if not (args.yaml or args.merge or args.magisk):
         print("\n[*] 加 --apply 写入 hosts 生效（管理员运行）；"
-              "或 --yaml / --merge 导出 Clash 配置给手机等设备用。")
+              "或 --yaml / --merge / --magisk 导出配置给手机等设备用。")
     return 0
 
 

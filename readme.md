@@ -52,9 +52,10 @@
 - **按稳定性排序**: 每个 IP 多次握手，按命中率降序排序（单次最快往往最抖），再看平均/最差握手耗时。
 - **安全写 hosts**: 写入时自动清理目标域的旧映射，条目带 `cf-ip-finder:bgacn` 标记，可随时一键移除，不碰你自己写的 hosts。
 - **导出 Clash 配置**: 一键生成 Clash 独立配置（纯直连、无需订阅）或 Clash Verge 覆写合并片段，手机/路由器等不方便改 hosts 的设备也能用。
+- **导出 Magisk 模块**: root 手机可直接导出 Magisk 模块（systemless hosts），刷入重启即生效，连 Clash 都不用装。
 
 **图形界面**：点击主界面的 "CF 网站优选" 按钮，设置目标域名（默认 bgacn.com，可改成任何托管在 Cloudflare 的网站）、测试数量、握手次数后点 "开始优选"，
-完成后选中结果（不选则用最稳的）点 "写入Hosts"（需管理员权限），或点 "生成YAML"/"生成Merge" 导出 Clash 配置；"从Hosts移除" 可随时还原。
+完成后选中结果（不选则用最稳的）点 "写入Hosts"（需管理员权限），或点 "生成YAML"/"生成Merge"/"导出Magisk" 导出配置；"从Hosts移除" 可随时还原。
 
 **命令行**（适合脚本化 / 定时重跑）：
 
@@ -73,6 +74,9 @@ python cf_ip_scanner.py bgacn --remove
 
 # 生成 Clash 独立配置 / Clash Verge 覆写合并片段
 python cf_ip_scanner.py bgacn --yaml clash.yaml --merge merge.yaml
+
+# 生成 Magisk 模块（root 手机刷入，免 Clash）
+python cf_ip_scanner.py bgacn --magisk module.zip
 
 # 已有可用 IP 时直接生成，不扫描
 python cf_ip_scanner.py bgacn --ip 1.2.3.4 --yaml clash.yaml
@@ -94,6 +98,7 @@ python cf_ip_scanner.py bgacn --target www.bgacn.com --count 1500 --reps 5 --jso
 | `--remove` | — | 从 hosts 移除本工具写入的条目 |
 | `--yaml` | — | 生成 Clash 独立配置（纯直连，无需订阅） |
 | `--merge` | — | 生成 Clash Verge 覆写合并片段（挂到订阅上用） |
+| `--magisk` | — | 生成 Magisk 模块 zip（systemless hosts，需 root） |
 | `--json` | — | 结果存成 JSON 文件 |
 
 **独立版工具（零依赖）**: 仓库另附纯标准库实现的独立版 [bgacn_ip_finder.py](bgacn_ip_finder.py)（命令行）和 [bgacn_ip_finder_gui.py](bgacn_ip_finder_gui.py)（图形界面），不依赖 requests/dnspython，可直接双击打包的 exe 使用（见 [Releases](../../releases)）：
@@ -104,6 +109,34 @@ python bgacn_ip_finder.py --gui         # 同上
 python bgacn_ip_finder.py --apply       # 命令行扫描并写入 hosts
 python bgacn_ip_finder.py --yaml c.yaml --merge m.yaml   # 导出 Clash 配置
 ```
+
+## 🧩 新手指南：怎么用 Clash 加速（小白向）
+
+完全没用过 Clash 也没关系，照着做就行。**不需要"节点订阅"**，我们生成的配置是纯直连的。
+
+**1. 装客户端（免费，二选一）**
+- 安卓手机：应用商店或 GitHub 搜 **ClashMeta for Android**（或 FlClash），下载 apk 安装。
+- Windows 电脑：搜 **Clash Verge Rev** 下载安装。
+
+**2. 拿到配置（三选一）**
+- **最简单**：点工具里「生成YAML」得到一个 `.yaml` 文件——直接用它。
+- **已有订阅**：点「生成Merge」得到片段，在 Clash Verge 的「覆写合并」里粘贴，以后订阅更新也不丢。
+- **root 手机**：点「导出Magisk」得到 zip，Magisk 里刷入重启即可，**根本不用装 Clash**。
+
+**3. 导入配置**
+- ClashMeta for Android：顶部「配置」→ 右下角 `+` → 「文件」→ 选生成的 yaml → 点选中它。
+- Clash Verge：「订阅/配置」页 → 「新建」→「导入」→ 选文件。
+
+**4. 开启加速**
+- 手机：回首页点「启动」，允许 VPN 连接（系统弹窗点确定）。
+- 电脑：打开「系统代理」；想全局生效再开「TUN 模式」（需要授权）。
+
+**5. 验证**
+- 打开目标网站（默认 bgacn.com），明显变快就成功了。没效果就重新跑一次优选换 IP，再重新生成导入一遍。
+
+> 提示：只想加速目标站的话**不要开全局代理**，规则会自动让目标站走直连优选 IP，其它流量不受影响。
+
+
 
 ## 🤝 贡献与反馈
 
