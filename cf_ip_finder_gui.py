@@ -67,7 +67,7 @@ class BGACNApp(tk.Tk):
         self.remove_btn.pack(side=tk.LEFT, padx=5)
         self.yaml_btn = ttk.Button(row2, text="生成YAML", command=self.export_yaml)
         self.yaml_btn.pack(side=tk.LEFT, padx=5)
-        self.merge_btn = ttk.Button(row2, text="生成Merge", command=self.export_merge)
+        self.merge_btn = ttk.Button(row2, text="复制Merge", command=self.copy_merge)
         self.merge_btn.pack(side=tk.LEFT, padx=5)
         self.magisk_btn = ttk.Button(row2, text="导出Magisk", command=self.export_magisk)
         self.magisk_btn.pack(side=tk.LEFT, padx=5)
@@ -177,13 +177,9 @@ class BGACNApp(tk.Tk):
             title = "生成 Magisk 模块（systemless hosts，需 root）"
             initial = f"{target}-magisk.zip"
             types = [("ZIP", "*.zip"), ("所有文件", "*.*")]
-        elif is_yaml:
+        else:
             title = "生成 Clash 独立配置"
             initial = f"{target}-clash.yaml"
-            types = [("YAML", "*.yaml *.yml"), ("所有文件", "*.*")]
-        else:
-            title = "生成 Clash Verge 覆写合并片段"
-            initial = f"{target}-merge.yaml"
             types = [("YAML", "*.yaml *.yml"), ("所有文件", "*.*")]
         path = filedialog.asksaveasfilename(
             title=title, defaultextension=".zip" if is_magisk else ".yaml",
@@ -191,7 +187,7 @@ class BGACNApp(tk.Tk):
         )
         if not path:
             return
-        fn = core.export_magisk if is_magisk else (core.export_yaml if is_yaml else core.export_merge)
+        fn = core.export_magisk if is_magisk else core.export_yaml
         ok, msg = fn(path, ip, target)
         (messagebox.showinfo if ok else messagebox.showerror)("导出", msg)
         self.status.config(text=msg.splitlines()[0])
@@ -200,9 +196,16 @@ class BGACNApp(tk.Tk):
         """生成 Clash 独立配置（纯直连，无需订阅）。"""
         self._export("yaml")
 
-    def export_merge(self):
-        """生成 Clash Verge 覆写合并片段（挂到订阅上用）。"""
-        self._export("merge")
+    def copy_merge(self):
+        """把覆写合并片段复制到剪切板（不生成文件）。"""
+        if not self.results:
+            messagebox.showinfo("复制Merge", "请先运行优选。")
+            return
+        ip = self._pick_ip()
+        target = self._target()
+        ok, msg = core.copy_merge(ip, target)
+        (messagebox.showinfo if ok else messagebox.showerror)("复制Merge", msg)
+        self.status.config(text=msg.splitlines()[0])
 
     def export_magisk(self):
         """生成 Magisk 模块 zip（root 手机刷入，免 Clash）。"""

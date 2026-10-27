@@ -783,7 +783,7 @@ class BGACNWindow(tk.Toplevel):
         self.remove_btn.pack(side=tk.LEFT, padx=5)
         self.yaml_btn = ttk.Button(row2, text="生成YAML", command=self.export_yaml)
         self.yaml_btn.pack(side=tk.LEFT, padx=5)
-        self.merge_btn = ttk.Button(row2, text="生成Merge", command=self.export_merge)
+        self.merge_btn = ttk.Button(row2, text="复制Merge", command=self.copy_merge)
         self.merge_btn.pack(side=tk.LEFT, padx=5)
         self.magisk_btn = ttk.Button(row2, text="导出Magisk", command=self.export_magisk)
         self.magisk_btn.pack(side=tk.LEFT, padx=5)
@@ -878,13 +878,9 @@ class BGACNWindow(tk.Toplevel):
             title = "生成 Magisk 模块（systemless hosts，需 root）"
             initial = f"{target}-magisk.zip"
             types = [("ZIP", "*.zip"), ("所有文件", "*.*")]
-        elif is_yaml:
+        else:
             title = "生成 Clash 独立配置"
             initial = f"{target}-clash.yaml"
-            types = [("YAML", "*.yaml *.yml"), ("所有文件", "*.*")]
-        else:
-            title = "生成 Clash Verge 覆写合并片段"
-            initial = f"{target}-merge.yaml"
             types = [("YAML", "*.yaml *.yml"), ("所有文件", "*.*")]
         path = filedialog.asksaveasfilename(
             title=title, defaultextension=".zip" if is_magisk else ".yaml",
@@ -896,9 +892,8 @@ class BGACNWindow(tk.Toplevel):
             if is_magisk:
                 ok, msg = magisk_module_zip(path, ip, target)
             else:
-                text = clash_yaml_text(ip, target) if is_yaml else clash_merge_text(ip, target)
                 with open(path, "w", encoding="utf-8") as f:
-                    f.write(text)
+                    f.write(clash_yaml_text(ip, target))
                 ok, msg = True, f"已生成 -> {path}（{target} -> {ip}）"
         except OSError as e:
             ok, msg = False, f"写入失败: {e}"
@@ -909,9 +904,17 @@ class BGACNWindow(tk.Toplevel):
         """生成 Clash 独立配置（纯直连，无需订阅）。"""
         self._export("yaml")
 
-    def export_merge(self):
-        """生成 Clash Verge 覆写合并片段（挂到订阅上用）。"""
-        self._export("merge")
+    def copy_merge(self):
+        """把覆写合并片段复制到剪切板（不生成文件）。"""
+        if not self.results:
+            messagebox.showinfo("复制Merge", "请先运行优选。")
+            return
+        sel = self.tree.selection()
+        ip = self.tree.item(sel[0], 'values')[0] if sel else self.results[0]['ip']
+        target = self.target_entry.get().strip() or 'bgacn.com'
+        ok, msg = copy_merge(ip, target)
+        (messagebox.showinfo if ok else messagebox.showerror)("复制Merge", msg)
+        self.status.config(text=msg.splitlines()[0])
 
     def export_magisk(self):
         """生成 Magisk 模块 zip（root 手机刷入，免 Clash）。"""
@@ -1257,6 +1260,23 @@ rules:
 """
 
 
+def copy_to_clipboard(text):
+    """把文本复制到系统剪切板（Windows），返回是否成功。"""
+    try:
+        p = subprocess.Popen(["clip"], stdin=subprocess.PIPE)
+        p.communicate(text.encode("utf-16"))
+        return p.returncode == 0
+    except OSError:
+        return False
+
+
+def copy_merge(ip, target):
+    """把覆写合并片段复制到剪切板，返回 (ok, msg)。"""
+    if not copy_to_clipboard(clash_merge_text(ip, target)):
+        return False, "复制到剪切板失败。"
+    return True, f"覆写合并片段已复制到剪切板（{target} -> {ip}）\n      粘贴到 Clash Verge 的「覆写合并」即可"
+
+
 # Magisk 模块安装脚本（Magisk 20.4+ 标准模板）
 MAGISK_UPDATE_BINARY = """#!/sbin/sh
 umask 022
@@ -1318,7 +1338,7 @@ def run_bgacn_cli(argv):
     ap.add_argument("--apply", action="store_true", help="把最稳的 IP 写入 hosts（需管理员）")
     ap.add_argument("--remove", action="store_true", help="从 hosts 移除本工具写入的条目")
     ap.add_argument("--yaml", metavar="FILE", help="生成 Clash 独立配置（纯直连，无需订阅）到 FILE")
-    ap.add_argument("--merge", metavar="FILE", help="生成 Clash Verge 覆写合并片段到 FILE")
+    ap.add_argument("--merge", action="store_true", help="把 Clash Verge 覆写合并片段复制到剪切板（挂到订阅上用）")
     ap.add_argument("--magisk", metavar="FILE", help="生成 Magisk 模块 zip（systemless hosts，需 root）到 FILE")
     ap.add_argument("--json", help="把结果存成 JSON 文件")
     args = ap.parse_args(argv)
@@ -1367,12 +1387,8 @@ def run_bgacn_cli(argv):
             print(f"[!] 写入失败: {e}")
 
     if args.merge:
-        try:
-            with open(args.merge, "w", encoding="utf-8") as f:
-                f.write(clash_merge_text(best["ip"], args.target))
-            print(f"[+] 已生成覆写合并片段 -> {args.merge}\n      {args.target} -> {best['ip']}（挂到订阅上即可）")
-        except OSError as e:
-            print(f"[!] 写入失败: {e}")
+        ok, msg = copy_merge(best["ip"], args.target)
+        print(("[+] " if ok else "[!] ") + msg)
 
     if args.magisk:
         ok, msg = magisk_module_zip(args.magisk, best["ip"], args.target)
@@ -1385,7 +1401,7 @@ def run_bgacn_cli(argv):
 
     if not (args.yaml or args.merge or args.magisk):
         print("\n[*] 加 --apply 写入 hosts 生效（管理员运行）；"
-              "或 --yaml / --merge / --magisk 导出配置给手机等设备用。")
+              "或 --yaml / --magisk 导出文件、--merge 复制到剪切板，给手机等设备用。")
     return 0
 
 

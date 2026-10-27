@@ -17,7 +17,8 @@ cf-ip-finder — 托管在 Cloudflare 上网站的优选 IP 工具
   python cf_ip_finder.py --gui           # 启动图形界面
   python cf_ip_finder.py --apply         # 扫描并把最优 IP 写入 hosts（需管理员）
   python cf_ip_finder.py --remove        # 从 hosts 删除本工具写入的条目
-  python cf_ip_finder.py --yaml c.yaml --merge m.yaml   # 扫描并导出 Clash 配置
+  python cf_ip_finder.py --yaml c.yaml --merge       # 扫描、导出 Clash 配置并复制覆写片段
+  python cf_ip_finder.py --merge                     # 仅把覆写合并片段复制到剪切板
   python cf_ip_finder.py --ip 1.2.3.4 --yaml c.yaml     # 指定 IP 直接生成，不扫描
   python cf_ip_finder.py --magisk m.zip                 # 导出 Magisk 模块（root 手机直刷）
   python cf_ip_finder.py --target example.com --count 1500 --reps 5
@@ -29,6 +30,7 @@ import json
 import random
 import socket
 import ssl
+import subprocess
 import sys
 import time
 import zipfile
@@ -283,14 +285,21 @@ def export_yaml(path, ip, target):
     return True, f"已生成 Clash 独立配置 -> {path}\n      {target} -> {ip}（纯直连，无需订阅）"
 
 
-def export_merge(path, ip, target):
-    """生成 Clash Verge 覆写合并片段，返回 (ok, msg)。"""
+def copy_to_clipboard(text):
+    """把文本复制到系统剪切板（Windows），返回是否成功。"""
     try:
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(_clash_merge_text(ip, target))
-    except OSError as e:
-        return False, f"写入失败: {e}"
-    return True, f"已生成覆写合并片段 -> {path}\n      {target} -> {ip}（挂到订阅上即可）"
+        p = subprocess.Popen(["clip"], stdin=subprocess.PIPE)
+        p.communicate(text.encode("utf-16"))
+        return p.returncode == 0
+    except OSError:
+        return False
+
+
+def copy_merge(ip, target):
+    """把 Clash Verge 覆写合并片段复制到剪切板，返回 (ok, msg)。"""
+    if not copy_to_clipboard(_clash_merge_text(ip, target)):
+        return False, "复制到剪切板失败。"
+    return True, f"覆写合并片段已复制到剪切板（{target} -> {ip}）\n      粘贴到 Clash Verge 的「覆写合并」即可"
 
 
 # Magisk 模块安装脚本（Magisk 20.4+ 标准模板）
@@ -359,7 +368,7 @@ def main():
     ap.add_argument("--apply", action="store_true", help="把最稳的 IP 写入 Windows hosts（需管理员）")
     ap.add_argument("--remove", action="store_true", help="从 hosts 移除本工具写入的条目")
     ap.add_argument("--yaml", metavar="FILE", help="生成 Clash 独立配置（纯直连，无需订阅）到 FILE")
-    ap.add_argument("--merge", metavar="FILE", help="生成 Clash Verge 覆写合并片段到 FILE")
+    ap.add_argument("--merge", action="store_true", help="把 Clash Verge 覆写合并片段复制到剪切板（挂到订阅上用）")
     ap.add_argument("--magisk", metavar="FILE", help="生成 Magisk 模块 zip（systemless hosts，需 root）到 FILE")
     ap.add_argument("--gui", action="store_true", help="启动图形界面")
     ap.add_argument("--json", help="把结果存成 JSON 文件")
@@ -404,7 +413,7 @@ def main():
         print(("[+] " if ok else "[!] ") + msg)
 
     if args.merge:
-        ok, msg = export_merge(args.merge, best["ip"], args.target)
+        ok, msg = copy_merge(best["ip"], args.target)
         print(("[+] " if ok else "[!] ") + msg)
 
     if args.magisk:
@@ -418,7 +427,7 @@ def main():
             print("\n[*] 完成。浏览器直接访问即可，无需代理。若日后又卡，重新跑一次 --apply。")
     elif not (args.yaml or args.merge or args.magisk):
         print("\n[*] 加 --apply 写入 hosts 生效（管理员运行）；"
-              "或 --yaml / --merge / --magisk 导出配置给手机等设备用。")
+              "或 --yaml / --magisk 导出文件、--merge 复制到剪切板，给手机等设备用。")
 
 
 if __name__ == "__main__":

@@ -51,11 +51,11 @@
 - **校验真实性**: 证书必须覆盖目标域，且 `HEAD /` 返回 HTTP 200，确认该 IP 真的在服务目标站。
 - **按稳定性排序**: 每个 IP 多次握手，按命中率降序排序（单次最快往往最抖），再看平均/最差握手耗时。
 - **安全写 hosts**: 写入时自动清理目标域的旧映射，条目带本工具专用注释标记，可随时一键移除，不碰你自己写的 hosts。
-- **导出 Clash 配置**: 一键生成 Clash 独立配置（纯直连、无需订阅）或 Clash Verge 覆写合并片段，手机/路由器等不方便改 hosts 的设备也能用。
+- **导出 Clash 配置**: 一键生成 Clash 独立配置（纯直连、无需订阅），覆写合并片段一键复制到剪切板，手机/路由器等不方便改 hosts 的设备也能用。
 - **导出 Magisk 模块**: root 手机可直接导出 Magisk 模块（systemless hosts），刷入重启即生效，连 Clash 都不用装。
 
 **图形界面**：点击主界面的 "CF 网站优选" 按钮，设置目标域名（可填任意托管在 Cloudflare 的网站）、测试数量、握手次数后点 "开始优选"，
-完成后选中结果（不选则用最稳的）点 "写入Hosts"（需管理员权限），或点 "生成YAML"/"生成Merge"/"导出Magisk" 导出配置；"从Hosts移除" 可随时还原。
+完成后选中结果（不选则用最稳的）点 "写入Hosts"（需管理员权限），或点 "生成YAML"/"复制Merge"/"导出Magisk"；"从Hosts移除" 可随时还原。
 
 **命令行**（适合脚本化 / 定时重跑）：
 
@@ -72,8 +72,8 @@ python cf_ip_scanner.py cf --apply
 # 撤销：移除本工具写入的条目
 python cf_ip_scanner.py cf --remove
 
-# 生成 Clash 独立配置 / Clash Verge 覆写合并片段
-python cf_ip_scanner.py cf --yaml clash.yaml --merge merge.yaml
+# 生成 Clash 独立配置；覆写合并片段直接复制到剪切板
+python cf_ip_scanner.py cf --yaml clash.yaml --merge
 
 # 生成 Magisk 模块（root 手机刷入，免 Clash）
 python cf_ip_scanner.py cf --magisk module.zip
@@ -97,7 +97,7 @@ python cf_ip_scanner.py cf --target www.example.com --count 1500 --reps 5 --json
 | `--apply` | — | 把最稳的 IP 写入 hosts |
 | `--remove` | — | 从 hosts 移除本工具写入的条目 |
 | `--yaml` | — | 生成 Clash 独立配置（纯直连，无需订阅） |
-| `--merge` | — | 生成 Clash Verge 覆写合并片段（挂到订阅上用） |
+| `--merge` | — | 覆写合并片段复制到剪切板（挂到订阅上用） |
 | `--magisk` | — | 生成 Magisk 模块 zip（systemless hosts，需 root） |
 | `--json` | — | 结果存成 JSON 文件 |
 
@@ -107,7 +107,7 @@ python cf_ip_scanner.py cf --target www.example.com --count 1500 --reps 5 --json
 python cf_ip_finder_gui.py           # 启动图形界面
 python cf_ip_finder.py --gui         # 同上
 python cf_ip_finder.py --apply       # 命令行扫描并写入 hosts
-python cf_ip_finder.py --yaml c.yaml --merge m.yaml   # 导出 Clash 配置
+python cf_ip_finder.py --yaml c.yaml --merge   # 导出 Clash 配置并复制覆写片段
 ```
 
 ## 🧩 新手指南：怎么用 Clash 加速（小白向）
@@ -120,7 +120,7 @@ python cf_ip_finder.py --yaml c.yaml --merge m.yaml   # 导出 Clash 配置
 
 **2. 拿到配置（三选一）**
 - **最简单**：点工具里「生成YAML」得到一个 `.yaml` 文件——直接用它。
-- **已有订阅**：点「生成Merge」得到片段，在 Clash Verge 的「覆写合并」里粘贴，以后订阅更新也不丢。
+- **已有订阅**：点「复制Merge」把片段复制到剪切板，粘贴到 Clash Verge 的「覆写合并」里，以后订阅更新也不丢。
 - **root 手机**：点「导出Magisk」得到 zip，Magisk 里刷入重启即可，**根本不用装 Clash**。
 
 **3. 导入配置**
